@@ -16,6 +16,8 @@ numpy = "*"
 pandas = "*"
 click = "*"
 mecab-python3 = "*"
+requests = "*"
+tqdm = "*"
 
 [requires]
 python_version = "3.7"
