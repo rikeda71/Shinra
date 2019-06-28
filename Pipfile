@@ -8,6 +8,7 @@ flake8 = "*"
 autopep8 = "*"
 mypy = "*"
 jupyterlab = "*"
+matplotlib = "*"
 
 [packages]
 bs4 = "*"
