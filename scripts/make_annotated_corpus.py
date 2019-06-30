@@ -1,5 +1,5 @@
 from typing import (
-    List, Dict, DefaultDict, Any
+    List, Dict, Tuple, DefaultDict, Any
 )
 from collections import defaultdict
 from glob import glob
@@ -8,11 +8,11 @@ import logging
 from logging import getLogger, StreamHandler
 import random
 import re
-import requests
-from tqdm import tqdm
 
 import bs4
 import click
+import requests
+from tqdm import tqdm
 
 
 logger = getLogger('make_dataset')
@@ -45,11 +45,13 @@ def json_reformatting(json_dir: str, json_class: str) \
         )[:-2] + ']'
     json_contents = json.loads(content)
     for json_content in json_contents:
-        if json_content['html_offset']['start']['line_id'] ==\
-                json_content['html_offset']['end']['line_id']:
+        if json_content['page_id'] != "79341":
+            continue
+        html_offset = json_content['html_offset']
+        if html_offset['start']['line_id'] == html_offset['end']['line_id']:
             reformated_contents[json_content['page_id']].append(
                 {
-                    'html_offset': json_content['html_offset'],
+                    'html_offset': html_offset,
                     'attribute': json_content['attribute']
                 }
             )
@@ -57,45 +59,73 @@ def json_reformatting(json_dir: str, json_class: str) \
     for k in reformated_contents.keys():
         reformated_contents[k].sort(
             key=lambda x: (x['html_offset']['start']['line_id'],
-                           x['html_offset']['start']['offset'])
+                           x['html_offset']['start']['offset'],
+                           x['html_offset']['end']['offset'])
         )
 
     return reformated_contents
+
+
+def slide_annotate_idx(plus_lens: List[Tuple[int, int]], i: int) -> int:
+    """
+    slide annotation index. support `annotation_to_line` method
+    :param plus_lens: [(index, label_len), (index, label_len)]
+    :type plus_lens: List[Tuple[int, int]]
+    :param i: [annotation index]
+    :type i: int
+    :return: [slide index value]
+    :rtype: int
+    """
+
+    if len(plus_lens) == 0:
+        return 0
+    return sum([len_tuple[1] for len_tuple in plus_lens if len_tuple[0] < i])
 
 
 def annotation_to_line(line: str, start_idx: List[int], end_idx: List[int],
                        labels: List[str]) -> str:
     """
     annotate labels to a sentence
-    :param line: a sentence
-    :param start_idx: head of named entity indexes
-    :param end_idx: tail of named entity indexes
-    :param labels: named entity classes
-    :return a sentence annotated labels
+    :param line: [a sentence]
+    :type line: str
+    :param start_idx: [head of named entity indexes]
+    :type start_idx: List[int]
+    :param end_idx: [tail of named entity indexes]
+    :type end_idx: List[int]
+    :param labels: [named entity classes]
+    :type labels: List[str]
+    :return: [a sentence annotated labels]
+    :rtype: [str]
     """
 
-    plus_len = 0
+    plus_lens = []
     for s, e, a in zip(start_idx, end_idx, labels):
-        line = line[:e + plus_len] + '[/l-{}]'.format(a) + line[e + plus_len:]
-        line = line[:s + plus_len] + '[l-{}]'.format(a) + line[s + plus_len:]
-        plus_len += 9 + len(a)
+        line = line[:e + slide_annotate_idx(plus_lens, e)] + \
+            '[/l-{}]'.format(a) + line[e + slide_annotate_idx(plus_lens, e):]
+        line = line[:s + slide_annotate_idx(plus_lens, s)] + \
+            '[l-{}]'.format(a) + line[s + slide_annotate_idx(plus_lens, s):]
+        plus_lens.append((s, 4 + len(a)))
+        plus_lens.append((e, 5 + len(a)))
     return line
 
 
 def annotation_to_lines(answers: DefaultDict[str, List[Dict[str, Any]]],
-                        html_files: Dict[str, List[str]]) -> None:
+                        html_contents: Dict[str, List[str]]) -> None:
     """
     annotate labels to sentences
-    :param answers: reformatted json file of answer
-    :param html_dir: plain wikipedia html text
-    :return None
+    :param answers: [reformatted json file of answer]
+    :type answers: DefaultDict[str, List[Dict[str, Any]]]
+    :param html_contents: [plain wikipedia html text]
+    :type html_contents: Dict[str, List[str]]
+    :return: [description]
+    :rtype: None
     """
 
     for k, v in tqdm(answers.items()):
         line_ids = [answer['html_offset']['start']['line_id']
                     for answer in answers[k]]
-        html_file = html_files[k]
-        for i, line in enumerate(html_file):
+        html_content = html_contents[k]
+        for i, line in enumerate(html_content):
             if i in line_ids:
                 starts = [answer['html_offset']['start']['offset']
                           for answer in answers[k]
@@ -107,7 +137,7 @@ def annotation_to_lines(answers: DefaultDict[str, List[Dict[str, Any]]],
                               for answer in answers[k]
                               if answer['html_offset']['start']['line_id']
                               == i]
-                html_files[k][i] = annotation_to_line(
+                html_contents[k][i] = annotation_to_line(
                     line, starts, ends, attributes
                 )
 
@@ -115,7 +145,7 @@ def annotation_to_lines(answers: DefaultDict[str, List[Dict[str, Any]]],
 def separate_sentences_and_others(html_content: str,
                                   separate_others: bool) -> Dict[str, str]:
     """
-
+    separate sentences, infobox, and others from a html content
     :param html_content: [a content of html file]
     :type html_content: str
     :param separate_others: [if True, separate sentences, infobox, and others]
@@ -129,17 +159,28 @@ def separate_sentences_and_others(html_content: str,
     # pickup infobox
     infobox = pickup_content_from_html('infobox', soup, True)
 
+    # 以下を削除する
+    # 目次
+    # 参照リスト
+    # リンク集
+    # フッター
+    # ナビゲーションボックス
+    # 題目(h2)
+    decompose_list = [soup.find(class_='toc'), soup.find(class_='reflist'),
+                      soup.find(class_='catlinks'), soup.find(class_='printfooter')]
+    decompose_list += soup.find_all('h2')
+    decompose_list += soup.find_all(class_='navbox')
+    [elem.decompose() for elem in decompose_list if elem is not None]
+
     if separate_others:
         # pickup sentences
         # "p" tag and "d" tag
         sentences = pickup_content_from_html('p', soup)
         sentences.extend(pickup_content_from_html('dd', soup))
-        soup = bs4.BeautifulSoup(html_content, 'html.parser')
         # class
         matching_class_tags = [
             'rellink',
             'thumbcaption',
-            'reference-text',
             'thumbimage'
         ]
         for class_tag in matching_class_tags:
@@ -180,7 +221,7 @@ def pickup_content_from_html(html_tag: str, soup: bs4.BeautifulSoup,
 def saving_annotated_corpus(annotated_contents: List[Dict[str, str]],
                             out_dir: str, cls_name: str) -> None:
     """
-
+    saving annotated corpus
     :param annotated_contents: [description]
     :type annotated_contents: List[Dict[str, str]]
     :param out_dir: [description]
@@ -339,7 +380,8 @@ def main(html_dir: str, annotation_dir: str, class_name: str,
                 )
     contents = {}
     logger.info('loading html files ...')
-    for html in tqdm(glob(html_dir + class_name + '/*.html')):
+    # for html in tqdm(glob(html_dir + class_name + '/*.html')):
+    for html in tqdm(glob(html_dir + class_name + '/79341.html')):
         with open(html, 'r') as f:
             key_name = fname_extract.search(html).group().replace('.html', '')
             contents[key_name] = f.read().split('\n')
@@ -350,7 +392,7 @@ def main(html_dir: str, annotation_dir: str, class_name: str,
     annotation_to_lines(answers, contents)
     logger.info('separating sentences, infobox, and others ...')
     annotated_contents = [
-        separate_sentences_and_others('\n'.join(content), False)
+        separate_sentences_and_others('\n'.join(content), True)
         for content in tqdm(contents.values())
     ]
     logger.info('saving annotated corpus ...')
@@ -358,9 +400,6 @@ def main(html_dir: str, annotation_dir: str, class_name: str,
     annotated_sentences: List[str] = []
     for content in annotated_contents:
         annotated_sentences.extend(content['sentences'])
-    logger.info('morphological analysing ...')
-    analysed = morph_analysing(annotated_sentences, morph_analysis,
-                               sudachim, bioul)
 
 
 if __name__ == '__main__':
