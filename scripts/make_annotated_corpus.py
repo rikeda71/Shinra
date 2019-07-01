@@ -6,12 +6,10 @@ from glob import glob
 import json
 import logging
 from logging import getLogger, StreamHandler
-import random
 import re
 
 import bs4
 import click
-import requests
 from tqdm import tqdm
 
 
@@ -20,7 +18,6 @@ logger.setLevel(logging.INFO)
 stream_handler = StreamHandler()
 stream_handler.setLevel(logging.INFO)
 logger.addHandler(stream_handler)
-random.seed(0)
 
 
 def json_reformatting(json_dir: str, json_class: str) \
@@ -45,8 +42,6 @@ def json_reformatting(json_dir: str, json_class: str) \
         )[:-2] + ']'
     json_contents = json.loads(content)
     for json_content in json_contents:
-        if json_content['page_id'] != "79341":
-            continue
         html_offset = json_content['html_offset']
         if html_offset['start']['line_id'] == html_offset['end']['line_id']:
             reformated_contents[json_content['page_id']].append(
@@ -154,29 +149,52 @@ def separate_sentences_and_others(html_content: str,
     :rtype: Dict[str, str]
     """
 
+    sentences = []
     soup = bs4.BeautifulSoup(html_content, 'html.parser')
 
     # pickup infobox
     infobox = pickup_content_from_html('infobox', soup, True)
+    infobox = ''.join(infobox)
+    infobox = re.sub(r'\n\s+', '\n', infobox)
+    infobox = re.sub(r'\n+', '\n', infobox)
 
     # 以下を削除する
+    # sitesub
+    # jump-to-nav
+    # plainlinks ambox ambox-move
     # 目次
-    # 参照リスト
     # リンク集
     # フッター
-    # ナビゲーションボックス
+    # 案内メニュー
     # 題目(h2)
-    decompose_list = [soup.find(class_='toc'), soup.find(class_='reflist'),
-                      soup.find(class_='catlinks'), soup.find(class_='printfooter')]
+    # script
+    # 参照リスト
+    # no print(dablink noprintを除く)
+    decompose_list = [soup.find(id='siteSub'),
+                      soup.find(id='jump-to-nav'),
+                      soup.find(class_='plainlinks ambox ambox-move'),
+                      soup.find(class_='toc'),
+                      soup.find(class_='catlinks'),
+                      soup.find(id='footer'),
+                      soup.find(class_='printfooter'),
+                      soup.find(id='mw-navigation'),
+                      ]
     decompose_list += soup.find_all('h2')
-    decompose_list += soup.find_all(class_='navbox')
+    decompose_list += soup.find_all('script')
+    decompose_list += soup.find_all(class_='reflist')
+    # 'mw-references-wrap'
+    sentences += [
+        elem.extract().text
+        for elem in soup.find_all(class_='dablink noprint')
+    ]
+    decompose_list += soup.find_all(class_='noprint')
     [elem.decompose() for elem in decompose_list if elem is not None]
 
     if separate_others:
         # pickup sentences
         # "p" tag and "d" tag
-        sentences = pickup_content_from_html('p', soup)
-        sentences.extend(pickup_content_from_html('dd', soup))
+        sentences += pickup_content_from_html('p', soup)
+        sentences += pickup_content_from_html('dd', soup)
         # class
         matching_class_tags = [
             'rellink',
@@ -185,16 +203,24 @@ def separate_sentences_and_others(html_content: str,
         ]
         for class_tag in matching_class_tags:
             sentences.extend(pickup_content_from_html(class_tag, soup, True))
+        sentences = '\n'.join(sentences)
+        sentences = re.sub(r'\n\s+', '\n', sentences)
+        sentences = re.sub('\n+', '\n', sentences)
 
         # others
         others = soup.get_text()
+        others = re.sub(r'ファイル:.*\n', '', others)
+        others = re.sub(r'\n\s+', '\n', others)
+        others = re.sub(r'\n+', '\n', others)
         return_obj = {
-            'sentences': '\n'.join(sentences),
-            'infobox': ''.join(infobox),
+            'sentences': sentences,
+            'infobox': infobox,
             'others': others,
         }
     else:
         sentences = soup.get_text()
+        sentences = re.sub(r'\n\s+', '\n', sentences)
+        sentences = re.sub(r'\n+', '\n', sentences)
         return_obj = {
             'sentences': sentences,
             'infobox': ''.join(infobox),
@@ -259,66 +285,6 @@ def saving_annotated_corpus(annotated_contents: List[Dict[str, str]],
             infof.write('\n'.join(infoboxes))
 
 
-def morph_analysing(sentences: List[str], algo: str,
-                    mode: str, bioul: bool = False):
-    annotated_sentences = []
-    headers = {'Content-Type': 'application/json'}
-    for sentence in tqdm(sentences):
-        label_insert_idx = re.finditer(r'\[l-', sentence)
-        label_close_idx = re.finditer(r'\[/l-', sentence)
-        sentence = re.sub(r'\[/*l-.+\]', '', sentence)
-
-        obj = {'sentence': sentence, 'mode': mode}
-        res = requests.post('http://localhost:5000/' + algo,
-                            json=obj, headers=headers)
-        result = res.json()
-        words = result['words']
-        info = result['info']
-        morphs = [w + '\t' + i for w, i in zip(words, info)]
-        annotation_labels = ['O'] * len(morphs)
-        ne_labels = []
-        places = []
-        for i, c in zip(label_insert_idx, label_close_idx):
-            ne_labels.append(i.group().replace('[l-', '').replace(']', ''))
-            places.append({'insert': i.start(), 'close': c.start()})
-        if len(places) == 0:
-            continue
-        sentence_len = 0
-        cnt = 0
-        for i, word in enumerate(words):
-            if sentence_len >= places[cnt]['insert']:
-                label = ne_labels[cnt]
-                start_idx = i
-            sentence_len += len(word)
-            if sentence_len <= places[cnt]['end']:
-                cnt += 1
-                if bioul:
-                    if start_idx == i:
-                        label = 'S-' + label
-                    else:
-                        label = 'E-' + label
-                else:
-                    if start_idx == i:
-                        label = 'B-' + label
-                    else:
-                        label = 'I-' + label
-            else:
-                if start_idx == i:
-                    label = 'B-' + label
-                else:
-                    label = 'I-' + label
-            annotation_labels[i] = label
-        annotated_sentences.append(
-            '\n'.join(
-                [
-                    morph + '\t' + label
-                    for morph, label in zip(morphs, annotation_labels)
-                ]
-            )
-        )
-    return annotated_sentences
-
-
 @click.command()
 @click.option('-hd', '--html_dir', type=str,
               default='../data/JP5/HTML/')
@@ -327,17 +293,7 @@ def morph_analysing(sentences: List[str], algo: str,
 @click.option('-cls', '--class_name', type=str,
               default='City')
 @click.option('-o', '--out', type=str, default='data/JP5/annotated_data/')
-@click.option('-k', '--ksplit_num', type=int, default=1)
-@click.option('-b', '--bioul', is_flag=True)
-@click.option('-c', '--char_level', is_flag=True)
-@click.option('--MECAB', 'morph_analysis', flag_value='mecab', default=True)
-@click.option('--NEOLOGD', 'morph_analysis', flag_value='mecab_neologd')
-@click.option('--JUMANPP', 'morph_analysis', flag_value='jumanpp')
-@click.option('--SUDACHI', 'morph_analysis', flag_value='sudachi')
-@click.option('--sudachim', type=click.Choice(['A', 'B', 'C']), default='C')
-def main(html_dir: str, annotation_dir: str, class_name: str,
-         out: str, ksplit_num: int, bioul: bool, char_level: bool,
-         morph_analysis: str, sudachim: str):
+def main(html_dir: str, annotation_dir: str, class_name: str, out: str):
     """
     make IE dataset from html and annotation files
     :param html_dir: [location of html files]
@@ -348,16 +304,6 @@ def main(html_dir: str, annotation_dir: str, class_name: str,
     :type class_name: str
     :param out: [location of annotated files]
     :type out: str
-    :param ksplit_num: [dataset split number. default=1 (no split) ]
-    :type ksplit_num: int
-    :param bioul: [NE label is BIOUL format (IOB2 -> BIOUL).]
-    :type bioul: bool
-    :param char_level: [make char level annotation.]
-    :type char_level: bool
-    :param morph_analysis: [morph analysis algorithm]
-    :type morph_analysis: str
-    :param sudachim: [sudachi morph analyser mode]
-    :type sudachim: str
     """
 
     html_dir += '/' if html_dir[-1] != '/' else ''
@@ -366,22 +312,15 @@ def main(html_dir: str, annotation_dir: str, class_name: str,
     fname_extract = re.compile(r'([^/]+?)?$')
 
     logger.info('show setting parameters\n\
-            html_dir: {0}\n\
-            annotation_dir: {1}\n\
-            class_name: {2}\n\
-            out: {3}\n\
-            ksplit_num: {4}\n\
-            bioul: {5}\n\
-            char_level: {6}\n\
-            morph_analysis: {7}\n\
-            sudachim: {8}'.format(html_dir, annotation_dir, class_name, out,
-                                  ksplit_num, bioul, char_level,
-                                  morph_analysis, sudachim)
-                )
+                html_dir: {0}\n\
+                annotation_dir: {1}\n\
+                class_name: {2}\n\
+                out: {3}\n' .format(
+        html_dir, annotation_dir, class_name, out)
+    )
     contents = {}
     logger.info('loading html files ...')
-    # for html in tqdm(glob(html_dir + class_name + '/*.html')):
-    for html in tqdm(glob(html_dir + class_name + '/79341.html')):
+    for html in tqdm(glob(html_dir + class_name + '/*.html')):
         with open(html, 'r') as f:
             key_name = fname_extract.search(html).group().replace('.html', '')
             contents[key_name] = f.read().split('\n')
