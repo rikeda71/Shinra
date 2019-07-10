@@ -137,6 +137,7 @@ dmypy.json
 # End of https://www.gitignore.io/api/python,jupyternotebook
 
 .vscode/
-.json
-.html
-.txt
+*.json
+*.html
+*.txt
+!.gitkeep
