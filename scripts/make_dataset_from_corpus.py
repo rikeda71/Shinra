@@ -1,13 +1,16 @@
 from typing import List, Dict, Tuple, Any
 from collections import defaultdict
+from copy import deepcopy
+import logging
 import re
 import random
-import logging
+import os
 from logging import getLogger, StreamHandler
 
 import click
 import requests
 from tqdm import tqdm
+from sklearn.model_selection import KFold
 
 
 logger = getLogger('make_dataset')
@@ -162,19 +165,22 @@ def get_current_labeling_pos(stack_places: List[Tuple[str, int, int]],
 
 
 def annotation(sentences: List[str], algo: str,
-               mode: str, bioul: bool = False):
+               mode: str, bioul: bool = False,
+               char_level: bool = False) -> List[str]:
     """
     annotating sentences
-    :param sentences: [description]
+    :param sentences: [list included sentences]
     :type sentences: List[str]
-    :param algo: [description]
+    :param algo: [morphological analysis algorithm]
     :type algo: str
-    :param mode: [description]
+    :param mode: [morphological analysis mode of sudachi]
     :type mode: str
-    :param bioul: [description], defaults to False
+    :param bioul: [if True, using BIOUL labeling scheme], defaults to False
     :type bioul: bool, optional
-    :return: [description]
-    :rtype: [type]
+    :param char_level: [if True, annotating by character], defaults to False
+    :type char_level: bool, optional
+    :return: [annotated sentences]
+    :rtype: List[str]
     """
 
     annotated_sentences = []
@@ -183,8 +189,12 @@ def annotation(sentences: List[str], algo: str,
         sentence = sentence.replace(' ', '')
         stack_places = get_annotated_label_info(sentence)
         sentence = re.sub(r'\[/*l-.+?\]', '', sentence)
-        words, info = request_morph_analysis_api(sentence, algo, mode)
-        morphs = [w + '\t' + i for w, i in zip(words, info)]
+        if char_level:
+            morphs = [c for c in sentence]
+            words = deepcopy(morphs)
+        else:
+            words, info = request_morph_analysis_api(sentence, algo, mode)
+            morphs = [w + '\t' + i for w, i in zip(words, info)]
 
         if len(stack_places) == 0:
             annotated_sentence = '\n'.join(
@@ -260,13 +270,40 @@ def main(corpus_path: str, out_dir: str, ksplit_num: int, bioul: bool,
                                        morph_analysis, sudachim)
                 )
     fname = re.sub(r'_.+', '', fname_extract.search(corpus_path).group())
-    fname = out_dir + fname + '.txt'
-    logger.info('save file path: ' + fname)
+    dirname = out_dir + fname + '/'
+    if char_level:
+        fname = out_dir + fname + '_char.txt'
+    else:
+        fname = out_dir + fname + '.txt'
     with open(corpus_path, 'r') as f:
         sentences = f.read().split('\n')
-    dataset = annotation(sentences, morph_analysis, sudachim, bioul)
-    with open(fname, 'w') as f:
-        f.write('\n\n'.join(dataset))
+    dataset = annotation(sentences, morph_analysis, sudachim,
+                         bioul, char_level)
+    num = 1
+    logger.info('file saving ...')
+    if ksplit_num > 2:
+        os.makedirs(dirname, exist_ok=True)
+        kf = KFold(n_splits=ksplit_num, shuffle=True, random_state=0)
+        for train_idx, test_idx in tqdm(kf.split(dataset)):
+            train = [dataset[i] for i in train_idx]
+            test = [dataset[i] for i in test_idx]
+            dev = random.sample(train, len(test))
+            for d in dev:
+                train.remove(d)
+            if char_level:
+                base_name = '_{}_{}_char.txt'.format(morph_analysis, num)
+            else:
+                base_name = '_{}_{}.txt'.format(morph_analysis, num)
+            with open('{}train{}'.format(dirname, base_name), 'w') as f, \
+                    open('{}test{}'.format(dirname, base_name), 'w') as f, \
+                    open('{}dev{}'.format(dirname, base_name), 'w') as f:
+                f.write('\n\n'.join(train))
+                f.write('\n\n'.join(test))
+                f.write('\n\n'.join(dev))
+            num += 1
+    else:
+        with open(fname, 'w') as f:
+            f.write('\n\n'.join(dataset))
 
 
 if __name__ == '__main__':
