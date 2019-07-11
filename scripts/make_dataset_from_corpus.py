@@ -294,12 +294,12 @@ def main(corpus_path: str, out_dir: str, ksplit_num: int, bioul: bool,
                 base_name = '_{}_{}_char.txt'.format(morph_analysis, num)
             else:
                 base_name = '_{}_{}.txt'.format(morph_analysis, num)
-            with open('{}train{}'.format(dirname, base_name), 'w') as f, \
-                    open('{}test{}'.format(dirname, base_name), 'w') as f, \
-                    open('{}dev{}'.format(dirname, base_name), 'w') as f:
-                f.write('\n\n'.join(train))
-                f.write('\n\n'.join(test))
-                f.write('\n\n'.join(dev))
+            with open('{}train{}'.format(dirname, base_name), 'w') as trf, \
+                    open('{}test{}'.format(dirname, base_name), 'w') as tef, \
+                    open('{}dev{}'.format(dirname, base_name), 'w') as df:
+                trf.write('\n\n'.join(train))
+                tef.write('\n\n'.join(test))
+                df.write('\n\n'.join(dev))
             num += 1
     else:
         with open(fname, 'w') as f:

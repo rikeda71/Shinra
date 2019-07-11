@@ -19,6 +19,8 @@ click = "*"
 mecab-python3 = "*"
 requests = "*"
 tqdm = "*"
+mlflow = "*"
+torch = "*"
 
 [requires]
 python_version = "3.7"
