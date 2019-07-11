@@ -6,12 +6,19 @@ verify_ssl = true
 [dev-packages]
 flake8 = "*"
 autopep8 = "*"
+mypy = "*"
+jupyterlab = "*"
+matplotlib = "*"
 
 [packages]
 bs4 = "*"
 sklearn = "*"
 numpy = "*"
 pandas = "*"
+click = "*"
+mecab-python3 = "*"
+requests = "*"
+tqdm = "*"
 
 [requires]
 python_version = "3.7"
