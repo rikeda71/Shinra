@@ -183,6 +183,8 @@ def annotation(sentences: List[str], algo: str,
     :rtype: List[str]
     """
 
+    tab_num = 1
+    tab_counts = []
     annotated_sentences = []
     logger.info('morph analysing ...')
     for sentence in tqdm(sentences):
@@ -201,10 +203,13 @@ def annotation(sentences: List[str], algo: str,
         if len(stack_places) == 0:
             annotated_sentence = [morph + '\t' + label for morph,
                                   label in zip(morphs, ['O'] * len(morphs))]
+            if len(annotated_sentence) == 0:
+                continue
+            tab_counts.append(1)
             annotated_sentences.append(annotated_sentence)
             continue
 
-        tab_num = 0
+        tab_cnt = 0
         while len(stack_places) > 0:
             places, stack_places = get_current_labeling_pos(
                 stack_places, sentence
@@ -222,18 +227,17 @@ def annotation(sentences: List[str], algo: str,
                 cnt += 1 if flag else 0
             for k, label in enumerate(annotation_labels):
                 morphs[k] += '\t' + label
-            tab_cnt = morphs[-1].count('\t')
+            tab_cnt += 1
             tab_num = tab_cnt if tab_cnt > tab_num else tab_num
+        tab_counts.append(tab_cnt)
         annotated_sentences.append(morphs)
 
     # adjust the number of annotation
     for i, ansentence in enumerate(annotated_sentences):
-        tab_cnt = ansentence[0].count('\t')
-        if tab_cnt < tab_num:
-            for j, morph in enumerate(ansentence):
-                annotated_sentences[i][j] += ''.join(
-                    ['\tO'] * (tab_num - tab_cnt)
-                )
+        for j, morph in enumerate(ansentence):
+            annotated_sentences[i][j] += ''.join(
+                ['\tO'] * (tab_num - tab_counts[i])
+            )
     return ['\n'.join(morphs) for morphs in annotated_sentences]
 
 
