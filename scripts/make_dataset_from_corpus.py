@@ -187,6 +187,8 @@ def annotation(sentences: List[str], algo: str,
     logger.info('morph analysing ...')
     for sentence in tqdm(sentences):
         sentence = sentence.replace(' ', '')
+        if sentence == '':
+            continue
         stack_places = get_annotated_label_info(sentence)
         sentence = re.sub(r'\[/*l-.+?\]', '', sentence)
         if char_level:
@@ -197,13 +199,12 @@ def annotation(sentences: List[str], algo: str,
             morphs = [w + '\t' + i for w, i in zip(words, info)]
 
         if len(stack_places) == 0:
-            annotated_sentence = '\n'.join(
-                [morph + '\t' + label for morph,
-                 label in zip(morphs, ['O'] * len(morphs))]
-            )
+            annotated_sentence = [morph + '\t' + label for morph,
+                                  label in zip(morphs, ['O'] * len(morphs))]
             annotated_sentences.append(annotated_sentence)
             continue
 
+        tab_num = 0
         while len(stack_places) > 0:
             places, stack_places = get_current_labeling_pos(
                 stack_places, sentence
@@ -221,8 +222,19 @@ def annotation(sentences: List[str], algo: str,
                 cnt += 1 if flag else 0
             for k, label in enumerate(annotation_labels):
                 morphs[k] += '\t' + label
-        annotated_sentences.append('\n'.join(morphs))
-    return annotated_sentences
+            tab_cnt = morphs[-1].count('\t')
+            tab_num = tab_cnt if tab_cnt > tab_num else tab_num
+        annotated_sentences.append(morphs)
+
+    # adjust the number of annotation
+    for i, ansentence in enumerate(annotated_sentences):
+        tab_cnt = ansentence[0].count('\t')
+        if tab_cnt < tab_num:
+            for j, morph in enumerate(ansentence):
+                annotated_sentences[i][j] += ''.join(
+                    ['\tO'] * (tab_num - tab_cnt)
+                )
+    return ['\n'.join(morphs) for morphs in annotated_sentences]
 
 
 @click.command()
