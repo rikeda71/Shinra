@@ -5,6 +5,7 @@ import logging
 import re
 import random
 import os
+import unicodedata
 from logging import getLogger, StreamHandler
 
 import click
@@ -188,17 +189,19 @@ def annotation(sentences: List[str], algo: str,
     annotated_sentences = []
     logger.info('morph analysing ...')
     for sentence in tqdm(sentences):
-        sentence = sentence.replace(' ', '')
+        sentence = re.sub(r'\s{2,}', '',
+                          unicodedata.normalize('NFKD', sentence)).strip()
         if sentence == '':
             continue
         stack_places = get_annotated_label_info(sentence)
         sentence = re.sub(r'\[/*l-.+?\]', '', sentence)
         if char_level:
-            morphs = [c for c in sentence]
+            morphs = [c for c in sentence.replace(' ', '')]
             words = deepcopy(morphs)
         else:
             words, info = request_morph_analysis_api(sentence, algo, mode)
-            morphs = [w + '\t' + i for w, i in zip(words, info)]
+            morphs = [w + '\t' + i for w,
+                      i in zip(words, info) if w != ['', ' ']]
 
         if len(stack_places) == 0:
             annotated_sentence = [morph + '\t' + label for morph,
