@@ -20,7 +20,8 @@ mecab-python3 = "*"
 requests = "*"
 tqdm = "*"
 mlflow = "*"
-torch = "*"
+torch = "==1.1.0"
+torchtext = "*"
 
 [requires]
 python_version = "3.7"
