@@ -25,7 +25,7 @@ HEADERS = {'Content-Type': 'application/json'}
 random.seed(0)
 
 
-def return_ne_label(now_index: int, places: Dict[str, int],
+def return_ne_label(now_index: int, places: Dict[str, Any],
                     word_len: int, bioul: bool) -> Tuple[str, bool]:
     """
     decide head label and ne_label
@@ -190,7 +190,7 @@ def annotation(sentences: List[str], algo: str,
     logger.info('morph analysing ...')
     for sentence in tqdm(sentences):
         sentence = re.sub(r'\s{2,}', '',
-                          unicodedata.normalize('NFKD', sentence)).strip()
+                          unicodedata.normalize('NFKC', sentence)).strip()
         if sentence == '':
             continue
         stack_places = get_annotated_label_info(sentence)
