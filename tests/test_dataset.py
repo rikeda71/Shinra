@@ -38,7 +38,8 @@ class NestedNERDatasetTest(unittest.TestCase):
         self.assertFalse(torch.equal(self.dataset.SUBPOS.vocab.vectors[i], z))
         self.assertEqual(self.dataset.device, 'cpu')
         self.assertEqual(len(self.dataset.LABELS), 3)
-        self.assertEqual(len(self.dataset.LABELS[1].vocab.stoi), 5)
+        self.assertEqual(len(self.dataset.LABELS[1].vocab.stoi), 4)
+        self.assertEqual(len(self.dataset.id_to_label), 6)
         self.assertTrue(
             all([
                 k in vars(self.dataset.train[0]).keys()

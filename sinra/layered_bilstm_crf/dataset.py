@@ -37,7 +37,7 @@ class NestedNERDataset:
         self.CHAR = torchtext.data.NestedField(CHAR_NESTING)
         self.POS = torchtext.data.Field(batch_first=True)
         self.SUBPOS = torchtext.data.Field(batch_first=True)
-        self.LABELS = [torchtext.data.Field(batch_first=True)
+        self.LABELS = [torchtext.data.Field(batch_first=True, unk_token=None)
                        for _ in range(self.label_len)]
         self.fields = [(('word', 'char'), (self.WORD, self.CHAR)),
                        ('pos', self.POS), ('subpos', self.SUBPOS)] + \
@@ -74,8 +74,14 @@ class NestedNERDataset:
                 dim=pos_emb_dim
             )
 
+        tmp_labels = set()
         for i in range(len(self.LABELS)):
             self.LABELS[i].build_vocab(self.train)
+            tmp_labels |= set(self.LABELS[i].vocab.itos[1:])
+        tmp_labels.remove('O')
+        self.id_to_label = ['O', '<pad>']
+        self.id_to_label += sorted(list(tmp_labels),
+                                   key=lambda x: (x[-1], x[0], x[2]))
 
         if use_gpu and torch.cuda.is_available():
             self.device = 'cuda'
