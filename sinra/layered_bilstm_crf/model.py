@@ -1,4 +1,4 @@
-from typing import List
+from typing import List, Tuple
 import numpy as np
 import torch
 import torch.nn as nn
@@ -38,7 +38,7 @@ class NestedNERModel(nn.Module):
         self.crf = CRF(num_labels)
         self.dropout_layer = nn.Dropout(p=dropout_rate)
 
-    def forward(self, input_embed, mask, labels, index):
+    def forward(self, input_embed, mask, labels, index) -> Tuple[torch.Tensor, ...]:
 
         # indexは以下の工程で構築できる
         # index_s = torch.arange(torch.cat(words).shape[0]) # wordsは(batch_size, sequence_len)
@@ -55,7 +55,13 @@ class NestedNERModel(nn.Module):
         score = self.crf(out, labels, mask)
         predicted_labels = self.crf.viterbi_decode(h, mask)
         predicted_labels = self.correct_predict(predicted_labels)
-        return -torch.mean(score, dim=0)
+        merge_index, batch_entity_index = \
+            self._construct_merge_index(predicted_labels)
+        merge_embed = self._merge_representations(h, merge_index,
+                                                  batch_entity_index)
+        return (-torch.mean(score, dim=0),
+                predicted_labels,
+                merge_embed, merge_index)
 
     @staticmethod
     def correct_predict(predicted_labels: List[List[int]]) -> torch.Tensor:
@@ -69,6 +75,8 @@ class NestedNERModel(nn.Module):
 
         pl_tensor = np.array(predicted_labels).astype('i')
         batch_size, pl_len = pl_tensor.shape
+        condition = (pl_tensor[:, 0] % 2 == 1) & (pl_tensor[:, 0] > 1)
+        pl_tensor[:, 0] = np.where(condition, pl_tensor[:, 0] - 1, pl_tensor[:, 0])
         pl_tensor = pl_tensor.reshape(-1)
         # TODO if torch >= 1.2, use `torch.where`
         i_indexes = np.where((pl_tensor % 2 == 1) & (pl_tensor > 1))[0]
@@ -98,63 +106,68 @@ class NestedNERModel(nn.Module):
         x = torch.cat((words, chars, pos, subpos), dim=2)
         return x
 
-    def _merge_representations(self, bilstm_output: torch.Tensor, predicted_labels: torch.Tensor):
-        split_lens = bilstm_output.shape[1]
-        batch_size, sequence_len, _ = bilstm_output.shape
-        predicted_labels
-        pl_tensor = torch.zeros((batch_size, sequence_len))
-        pl_tensor = torch.Tensor(predicted_labels)
+    @staticmethod
+    def _merge_representation(bilstm_output: torch.Tensor,
+                              merge_index: torch.Tensor,
+                              entity_index: List[List[int]]) -> torch.Tensor:
+        """
 
-        cat_pl_tensor = torch.cat(pl_tensor, dim=0)  # (sequence_len * batch_size, )
-        cat_outputs = torch.cat(bilstm_output, dim=0)  # (sequence_len * batch_size, hidden_size)
-        pass
+        :param bilstm_output:
+        :param merge_index:
+        :return:
+        """
+
+        batch_size, seq_len, hidden_size = bilstm_output.shape
+        ys = bilstm_output.detach().reshape(batch_size * seq_len, hidden_size)
+        ys = torch.matmul(torch.t(merge_index.float()), ys)
+
+        sum_index = torch.sum(merge_index.float(), dim=0)
+        sum_index = sum_index.repeat(ys.shape[1], 1)
+        sum_index = torch.t(sum_index)
+
+        ys = torch.div(ys, sum_index)
+        split_index = [len(index) for index in entity_index]
+
+        ys = F.split(ys, split_index, dim=0)
+
+        return ys
 
     @staticmethod
-    def _construct_merge_index(predicted_labels: torch.Tensor):
-        """
-        pl_tensor = torch.LongTensor(predicted_labels)
-        cat_pl_tensor = torch.cat(pl_tensor, dim=0).numpy()  # (sequence_len * batch_size, )
-        # TODO if torch >= 1.2, use `torch.where`
-        b_or_o_indexes = np.where(cat_pl_tensor % 2 == 0)[0]
-        b_or_o_indexes = torch.from_numpy(b_or_o_indexes)
-        i_indexes = np.where(cat_pl_tensor % 2 == 1 & cat_pl_tensor > 1)[0]
-        i_indexes = torch.from_numpy(i_indexes)
+    def _extend_label(predicted_labels: torch.Tensor, label_lens: List[torch.Tensor]) -> torch.Tensor:
+        # first input
+        if all([torch.equal(lens, torch.ones_like(lens)) for lens in label_lens]):
+            return predicted_labels
 
-        row_shape = cat_pl_tensor.shape[0]
-        col_shape = b_or_o_indexes.shape[0]
-        merge_index = torch.zeros((row_shape, col_shape))
-        merge_index[b_or_o_indexes, torch.arange(col_shape)] = 1
+        no_pad_idx = predicted_labels != 1
+        tmp_predicted = np.array([predicted_labels[i, :sum(idx)].numpy()
+                         for i, idx in enumerate(no_pad_idx)])
+        # sequential_predicted = predicted_labels.reshape(-1).numpy()  # (batch_size, seq_len)
+        sequential_predicted = np.concatenate(tmp_predicted)
+        # ne_nums = [len(l) for l in label_lens]
+        index = torch.cat(label_lens).long().tolist()
+        sequential_lens = np.array([sum(index[:i])
+                                    if i > 0 else 0
+                                    for i in range(len(index))], dtype='int64')
+        start_idx = sequential_lens[1:]
+        start_idx = np.insert(start_idx, 0, 0)
 
-        # Fill I labels
-        subarr = [cat_pl_tensor[0: elem] for elem in i_indexes]
-        # TODO if torch >= 1.2, use `torch.where`
-        entity_count = np.array([np.where(elem % 2 == 0)[0].shape[0]
-                                 for elem in subarr])
-        entity_count = torch.from_numpy(entity_count).long()
-        merge_index[i_indexes, entity_count - 1] = 1
+        sum_idx = [int(sum(l)) for l in label_lens]
+        arange_lens = [np.array([i] * int(num)) for i, num in enumerate(index)]
+        sequential_predicted = np.array([sequential_predicted[arange] for arange in arange_lens])
+        sequential_predicted = np.concatenate(sequential_predicted)
+        sequential_index = np.array([True] * int(sequential_lens[-1] + 1))
+        sequential_index[start_idx] = False
+        condition = sequential_index & (sequential_predicted % 2 == 0) & (sequential_predicted > 1)
+        sequential_predicted = np.where(condition, sequential_predicted + 1, sequential_predicted)
+        sequential_predicted = torch.split(torch.Tensor(sequential_predicted).long(), sum_idx)
+        sequential_predicted = torch.stack(sequential_predicted)
+        return sequential_predicted
 
-        # get all the start indexes for each word
-        entity_index_s = torch.zeros_like(merge_index).long()
-        irow_s = torch.argmax(merge_index, dim=0)
-        entity_index_s[irow_s, torch.arange(col_shape)] = 1
-        entity_index_s = torch.matmul(index[:, 0], entity_index_s).reshape(-1, 1)
-
-        # get all the end indexes for each word
-        merge_index_flip = torch.flip(merge_index, (0,))
-        irow_e = torch.argmax(merge_index_flip, dim=0) - 1 + row_shape
-        entity_index_e = torch.zeros_like(merge_index).long()
-        entity_index_e[irow_e, torch.arange(col_shape)] = 1
-        entity_index_e = torch.matmul(index[: 1], entity_index_e).reshape(-1, 1)
-        track_index = torch.cat(
-            (entity_index_s, entity_index_e), dim=1
-        )
-
-        return track_index, merge_index
-        """
+    @staticmethod
+    def _construct_merge_index(predicted_labels: torch.Tensor) -> Tuple[torch.Tensor, List[torch.Tensor]]:
 
         batch_size, seq_len = predicted_labels.shape
-        seq_pls = predicted_labels.reshape(-1).numpy()
-        # seq_pls = torch.cat(predicted_labels, dim=0).numpy()  # (batch_size * seq_len)
+        seq_pls = predicted_labels.reshape(-1).numpy()  # (batch_size * seq_len)
         # TODO if torch >= 1.2, use `torch.where`
         b_or_o_indexes = np.where(seq_pls % 2 == 0)[0]
         i_indexes = np.where((seq_pls % 2 == 1) & (seq_pls > 1))[0]
@@ -174,13 +187,10 @@ class NestedNERModel(nn.Module):
         entity_end_index = [[idx.shape[0] - np.argmax(np.flip(row))
                              for row in idx.T if np.any(row > 0)]
                             for idx in batch_merge_index]
-        batch_entity_index = [[list(np.arange(index[i - 1], index[i]))
-                              if i > 0 else list(np.arange(0, index[i]))
-                               for i in range(len(index))]
-                              for index in entity_end_index]
+        batch_entity_index = [torch.Tensor([index[i] - index[i - 1] if i > 0 else index[i]
+                              for i in range(len(index))]) for index in entity_end_index]
         return (torch.from_numpy(merge_index).long(),
                 batch_entity_index)
-
 
     def _is_next_step(self, predicted_labels: List[List[int]]):
         label_ids = np.arange(len(self.id_to_label))
