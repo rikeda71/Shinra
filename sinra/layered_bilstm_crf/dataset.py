@@ -16,15 +16,24 @@ class NestedNERDataset:
                  word_min_freq: int = 3, char_emb_dim: int = 50,
                  pos_emb_dim: int = 5):
         """
-        :param text_file_dir: path of dataset files
-        :param train_txt: file name of train dataset
-        :param dev_txt: file name of development dataset
-        :param test_txt: file name of test dataset
-        :param wordemb_path: path of pretrained word embedding
-        :param use_gpu: if True, using GPU
-        :param word_min_freq: if num of occuring < word_min_freq, word -> <unk>
-        :param char_emb_dim: dimension of character embeddings
-        :param pos_emb_dim: dimension of part of speech embeddings
+
+        Args:
+            text_file_dir (str): path of dataset files
+            train_txt (str, optional): file name of train dataset.
+             Defaults to 'train.txt'.
+            dev_txt (str, optional): file name of development dataset.
+             Defaults to 'dev.txt'.
+            test_txt (str, optional): file name of test dataset.
+             Defaults to 'test.txt'.
+            wordemb_path (str, optional): path of pretrained word embeddings.
+             Defaults to 'embedding.txt'.
+            use_gpu (bool, optional): if True, using GPU. Defaults to True.
+            word_min_freq (int, optional): if num of occuring < word_min_freq,
+             word -> <unk>. Defaults to 3.
+            char_emb_dim (int, optional): dimension of character embeddings.
+             Defaults to 50.
+            pos_emb_dim (int, optional): dimension of part of speech embeddings.
+             Defaults to 5.
         """
 
         text_file_dir += '/' if text_file_dir[-1] != '/' else ''
@@ -42,14 +51,6 @@ class NestedNERDataset:
                        ('pos', self.POS), ('subpos', self.SUBPOS)] + \
             [('label{}'.format(i), self.LABELS)
              for i in range(self.label_len)]
-        """
-        self.LABELS = [torchtext.data.Field(batch_first=True, unk_token=None)
-                       for _ in range(self.label_len)]
-        self.fields = [(('word', 'char'), (self.WORD, self.CHAR)),
-                       ('pos', self.POS), ('subpos', self.SUBPOS)] + \
-            [('label{}'.format(i), label)
-             for i, label in enumerate(self.LABELS)]
-        """
 
         self.train, self.dev, self.test = \
             torchtext.datasets.SequenceTaggingDataset.splits(
@@ -88,16 +89,6 @@ class NestedNERDataset:
                 dim=pos_emb_dim
             )
 
-        """
-        tmp_labels = set()
-        for i in range(len(self.LABELS)):
-            self.LABELS[i].build_vocab(self.train)
-            tmp_labels |= set(self.LABELS[i].vocab.itos[1:])
-        tmp_labels.remove('O')
-        self.id_to_label = ['<pad>', 'O']
-        self.id_to_label += sorted(list(tmp_labels),
-                                   key=lambda x: (x[-1], x[0], x[2]))
-        """
         self.LABELS.build_vocab(self.train)
         self.LABELS.vocab.itos.sort(key=lambda x: (x[-1], x[0]))
         self.LABELS.vocab.stoi = {s: i for i, s in
@@ -111,9 +102,12 @@ class NestedNERDataset:
     def get_batch(self, batch_size: int, dataset_name: str = 'train'):
         """
         get dataset iterator in each batch
-        :param batch_size: size of batch
-        :param dataset_name: want to call dataset
-        :return: bucket iterator of dataset
+        Args:
+            batch_size (int): size of a batch
+            dataset_name (str, optional): want to call dataset. Defaults to 'train'.
+
+        Returns:
+            [type]: bucket iterator of dataset
         """
 
         assert dataset_name in ['train', 'dev', 'test']
@@ -136,7 +130,8 @@ class NestedNERDataset:
     def get_embedding_dim(self) -> Dict[str, int]:
         """
         get size of embedding dimensions
-        :return: embedding dimensions of word, char, pos, and subpos
+        Returns:
+            Dict[str, int]: embedding dimensions of word, char, pos, and subpos
         """
 
         word_dim = self.WORD.vocab.vectors.shape[1]
@@ -152,9 +147,12 @@ class NestedNERDataset:
         initialize char embedding
         ref. (End-to-end Sequence Labeling via Bi-directional LSTM-CNNs-CRF
               Xuezhe Ma and Eduard Hovy, ACL2016)
-        :param vocab_size: [vocaburuary size]
-        :param embedding_dim: [dimension of char embedding]
-        :return: [initialized vectors. (vocab_size, embedding_dim)]
+        Args:
+            vocab_size (int): vocaburuary size
+            embedding_dim (int): dimension of character embeddings
+
+        Returns:
+            torch.Tensor: initialized vectors (vocab_size, embedding_dim)
         """
 
         pretrain_emb = np.empty([vocab_size, embedding_dim])
@@ -165,7 +163,18 @@ class NestedNERDataset:
         return torch.from_numpy(pretrain_emb).float()
 
     @staticmethod
-    def get_batch_true_label(data, nested: int) -> torch.Tensor:
+    def get_batch_true_label(data: torchtext.data.batch,
+                             nested: int) -> torch.Tensor:
+        """
+
+        Args:
+            data (torchtext.data.batch): bucket iterator object of torchtext
+            nested (int): number of current labeling nested
+
+        Returns:
+            torch.Tensor: labels of current nested
+        """
+
         if nested == 0:
             labels = data.label0
         elif nested == 1:

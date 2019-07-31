@@ -71,7 +71,7 @@ class NestedNERModelTest(unittest.TestCase):
                                   ]
 
     def test_correct_predict(self):
-        correct_pred_label_id = self.model.correct_predict(self.plabel_id)
+        correct_pred_label_id = self.model._correct_predict(self.plabel_id)
         self.assertTrue(
             torch.equal(correct_pred_label_id[0], self.tlabel_id[0])
         )
@@ -85,10 +85,10 @@ class NestedNERModelTest(unittest.TestCase):
             torch.equal(correct_pred_label_id[3], self.tlabel_id[3])
         )
 
-    def test_construct_merge_index(self):
+    def test_make_merge_index(self):
         mask = torch.ones_like(self.tlabel_id)
         merge_index, entity_index =\
-            NestedNERModel._construct_merge_index(self.tlabel_id, mask)
+            NestedNERModel.make_merge_index(self.tlabel_id, mask)
         self.assertTrue(torch.equal(merge_index, self.test_matrix))
         self.assertEqual(entity_index, self.true_entity_index)
         # self.assertEqual(entity_index, self.true_entity_index)
@@ -104,8 +104,8 @@ class NestedNERModelTest(unittest.TestCase):
         x = torch.rand(batch_size, seq_len, hidden_size)
         h, _ = bilstm(x, None)
         mr, next_mask = \
-            NestedNERModel._merge_representation(h, self.test_matrix,
-                                                 self.true_entity_index)
+            NestedNERModel.merge_representation(h, self.test_matrix,
+                                                self.true_entity_index)
         self.assertEqual(mr.shape[0], batch_size)
         self.assertEqual(mr.shape[1], 6)
         self.assertEqual(mr.shape[2], hidden_size)
@@ -113,7 +113,7 @@ class NestedNERModelTest(unittest.TestCase):
     def test_extend_label(self):
         # first input test
         first_indexes = [[1] * 8 for _ in range(4)]
-        extend_label = NestedNERModel._extend_label(
+        extend_label = NestedNERModel.extend_label(
             self.tlabel_id, first_indexes)
         self.assertTrue(torch.equal(self.tlabel_id, extend_label))
         before_label1 = [2, 1, 4, 1, 4, 0]
@@ -122,7 +122,7 @@ class NestedNERModelTest(unittest.TestCase):
                                       before_label1,
                                       before_label2,
                                       before_label2])
-        extend_label = NestedNERModel._extend_label(
+        extend_label = NestedNERModel.extend_label(
             before_labels, self.true_entity_index)
         self.assertTrue(torch.equal(extend_label, self.tlabel_id))
 

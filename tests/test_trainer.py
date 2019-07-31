@@ -21,7 +21,8 @@ class TrainerTest(unittest.TestCase):
                                         word_min_freq=0)
         dim = self.dataset.get_embedding_dim()
         self.model = NestedNERModel(num_labels=6, dropout_rate=0.5,
-                                    word_emb_dim=dim['word'], char_emb_dim=0,
+                                    word_emb_dim=dim['word'],
+                                    char_emb_dim=dim['char'],
                                     pos_emb_dim=dim['pos'],
                                     id_to_label=self.label_to_id)
         self.trainer = Trainer(

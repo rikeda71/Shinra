@@ -16,11 +16,14 @@ class NestedNERModel(nn.Module):
                  id_to_label: List[str], pad_idx: int = 0):
         """
 
-        :param num_labels:
-        :param dropout_rate:
-        :param word_emb_dim:
-        :param char_emb_dim:
-        :param pos_emb_dim:
+        Args:
+            num_labels (int): [description]
+            dropout_rate (float): [description]
+            word_emb_dim (int): [description]
+            char_emb_dim (int): [description]
+            pos_emb_dim (int): [description]
+            id_to_label (List[str]): [description]
+            pad_idx (int, optional): [description]. Defaults to 0.
         """
 
         super().__init__()
@@ -40,14 +43,20 @@ class NestedNERModel(nn.Module):
         self.crf = CRF(num_labels, pad_idx)
         self.pad_idx = pad_idx
 
-    def forward(self, input_embed, mask, labels, label_lens: List[List[int]]) \
-            -> Tuple[torch.Tensor, ...]:
+    def forward(self, input_embed: torch.Tensor, mask: torch.Tensor,
+                labels: torch.Tensor,
+                label_lens: List[List[int]]) -> Tuple[torch.Tensor, ...]:
+        """
 
-        # indexは以下の工程で構築できる
-        # index_s = torch.arange(torch.cat(words).shape[0]) # wordsは(batch_size, sequence_len)
-        # index_e = index_s + 1
-        # index = torch.cat((torch.cat(words).reshape(-1, 1), (torch.cat(words) + 1).reshape(-1, 1)), dim=1)
-        # 2回目以降はstart_nextで更新される
+        Args:
+            input_embed (torch.Tensor): [description]
+            mask (torch.Tensor): [description]
+            labels (torch.Tensor): [description]
+            label_lens (List[List[int]]): [description]
+
+        Returns:
+            Tuple[torch.Tensor, ...]: [description]
+        """
 
         x = self.dropout_layer(input_embed)
         x = nn.utils.rnn.pack_padded_sequence(
@@ -60,32 +69,32 @@ class NestedNERModel(nn.Module):
         score = self.crf(out, labels, mask)
         predicted_labels = self.crf.viterbi_decode(out, mask)
         next_step = self._is_next_step(predicted_labels)
-        predicted_labels = self.correct_predict(predicted_labels)
-        extend_predicted = self._extend_label(predicted_labels, label_lens)
+        predicted_labels = self._correct_predict(predicted_labels)
+        extend_predicted = self.extend_label(predicted_labels, label_lens)
         merge_index, next_label_lens = \
-            self._construct_merge_index(predicted_labels, mask)
-        # self._construct_merge_index(extend_predicted, mask)
+            self.make_merge_index(predicted_labels, mask)
         merge_embed, next_mask = \
-            self._merge_representation(h, merge_index, next_label_lens)
+            self.merge_representation(h, merge_index, next_label_lens)
         return (-torch.mean(score, dim=0),
                 next_step,
                 extend_predicted,
                 merge_embed, next_label_lens, next_mask)
 
-    def correct_predict(self, predicted_labels: List[List[int]]) -> torch.Tensor:
+    def _correct_predict(self, predicted_labels: List[List[int]]) -> torch.Tensor:
         """
-        Correct the prediction of the words
-        e.g. IOOBIOIII -> BOOBIOBII
-        (Illegal labels will disappear as the training process continues)
-        :param predicted_labels: NE labels decoded by NER model
-        :return:
+
+        Args:
+            predicted_labels (List[List[int]]): [description]
+
+        Returns:
+            torch.Tensor: [description]
         """
 
         split_lens = [len(l) for l in predicted_labels]
         # add padding label and to sequential
         seq_labels = [l for labels in predicted_labels
                       for l in labels]
-                      # for l in labels + [self.pad_idx] * (max_len - len(labels))]
+        # for l in labels + [self.pad_idx] * (max_len - len(labels))]
         head_idx = np.array([sum(split_lens[:i])
                              for i in range(len(split_lens))])
         pl_tensor = np.array(seq_labels, dtype='int64')
@@ -111,11 +120,6 @@ class NestedNERModel(nn.Module):
             torch.split(torch.from_numpy(pl_tensor).long(), split_lens),
             batch_first=True, padding_value=self.pad_idx
         )
-        """
-        corrected_labels = torch.stack(
-            torch.split(torch.from_numpy(pl_tensor).long(), split_lens)
-        )
-        """
         return corrected_labels
 
     @staticmethod
@@ -123,28 +127,34 @@ class NestedNERModel(nn.Module):
                               pos: torch.Tensor, subpos: torch.Tensor) -> torch.Tensor:
         """
 
-        :param words:
-        :param chars:
-        :param pos:
-        :param subpos:
-        :return:
+        Args:
+            words (torch.Tensor): [description]
+            chars (torch.Tensor): [description]
+            pos (torch.Tensor): [description]
+            subpos (torch.Tensor): [description]
+
+        Returns:
+            torch.Tensor: [description]
         """
-        # (batch_size, sequence_len, embedding_dim)
-        x = torch.cat((words, pos, subpos), dim=2)
+
+        # (batch_size, seq_len, embedding_dim)
+        x = torch.cat((words, chars, pos, subpos), dim=2)
         return x
-        # x = torch.cat((words, chars, pos, subpos), dim=2)
-        # return x
 
     @staticmethod
-    def _merge_representation(bilstm_output: torch.Tensor,
-                              merge_index: torch.Tensor,
-                              label_lens: List[List[int]]) \
-            -> Tuple[torch.Tensor, torch.Tensor]:
+    def merge_representation(bilstm_output: torch.Tensor,
+                             merge_index: torch.Tensor,
+                             label_lens: List[List[int]]) -> Tuple[torch.Tensor, ...]:
         """
 
-        :param bilstm_output:
-        :param merge_index:
-        :return:
+        :param bilstm_output: [description]
+        :type bilstm_output: torch.Tensor
+        :param merge_index: [description]
+        :type merge_index: torch.Tensor
+        :param label_lens: [description]
+        :type label_lens: List[List[int]]
+        :return: [description]
+        :rtype: Tuple[torch.Tensor, ...]
         """
 
         batch_size, seq_len, hidden_size = bilstm_output.shape
@@ -157,11 +167,8 @@ class NestedNERModel(nn.Module):
 
         ys = torch.div(ys, sum_index)
         split_index = [len(label_len) for label_len in label_lens]
-        # split_index = [sum(label_len) for label_len in label_lens]
 
         ys = F.split(ys, split_index, dim=0)
-        # ys = F.split(ys, max(split_index) * len(split_index), dim=0)
-        # ys = sorted(ys, key=lambda x: x.shape[0], reverse=True)
         len_aranges = [torch.arange(y.shape[0]) for y in ys]
         ys = nn.utils.rnn.pad_sequence(ys, batch_first=True)  # padding
         new_mask = torch.zeros((ys.shape[0], ys.shape[1]))
@@ -170,8 +177,8 @@ class NestedNERModel(nn.Module):
         return ys, new_mask
 
     @staticmethod
-    def _extend_label(predicted_labels: torch.Tensor,
-                      label_lens: List[List[int]]) -> torch.Tensor:
+    def extend_label(predicted_labels: torch.Tensor,
+                     label_lens: List[List[int]]) -> torch.Tensor:
         """
         extend labels predicted by model
         e.g. predicted_labels:BOBIO label_lens: [2, 1, 2, 1, 1]
@@ -224,20 +231,23 @@ class NestedNERModel(nn.Module):
         seq_pred = torch.split(
             torch.from_numpy(seq_pred).long(),
             [max(split_lens)] * len(split_lens))
-        # seq_pred = torch.split(torch.from_numpy(seq_pred).long(), split_lens)
-        """
-        seq_pred = sorted(seq_pred,
-                          key=lambda x: int(x.shape[0]),
-                          reverse=True)
-        """
         seq_pred = nn.utils.rnn.pad_sequence(
             seq_pred, batch_first=True,
         )
-        # seq_pred = torch.stack(seq_pred)
         return seq_pred
 
-    def shorten_label(self, labels: torch.Tensor, merge_index: List[List[int]]) \
-            -> torch.Tensor:
+    def shorten_label(self, labels: torch.Tensor,
+                      merge_index: List[List[int]]) -> torch.Tensor:
+        """
+
+        :param labels: [description]
+        :type labels: torch.Tensor
+        :param merge_index: [description]
+        :type merge_index: List[List[int]]
+        :return: [description]
+        :rtype: torch.Tensor
+        """
+
         shorten_index = [torch.LongTensor([sum(index[:k]) for k, idx in enumerate(index)])
                          for index in merge_index]
         shorten_labels = [labels[k][indexes]
@@ -248,9 +258,17 @@ class NestedNERModel(nn.Module):
         return shorten_labels
 
     @staticmethod
-    def _construct_merge_index(predicted_labels: torch.Tensor,
-                               mask: torch.Tensor) \
-            -> Tuple[torch.Tensor, List[List[int]]]:
+    def make_merge_index(predicted_labels: torch.Tensor,
+                         mask: torch.Tensor) -> Tuple[torch.Tensor, List[List[int]]]:
+        """
+
+        Args:
+            predicted_labels (torch.Tensor): [description]
+            mask (torch.Tensor): [description]
+
+        Returns:
+            Tuple[torch.Tensor, List[List[int]]]: [description]
+        """
 
         batch_size = len(predicted_labels)
         seq_lens = [len(label) for label in predicted_labels]
@@ -278,7 +296,7 @@ class NestedNERModel(nn.Module):
             return torch.from_numpy(merge_index).long(), label_lens
         merge_index[i_indexes, entity_count - 1] = 1
 
-        # each sentence
+        # derive each label length for each sentence
         batch_merge_index = [merge_index[sum(seq_lens[:i]): sum(seq_lens[:i + 1]), :]
                              for i in range(batch_size)]
         entity_end_index = [[idx.shape[0] - np.argmax(np.flip(row))
@@ -291,6 +309,15 @@ class NestedNERModel(nn.Module):
         return torch.from_numpy(merge_index).long(), label_lens
 
     def _is_next_step(self, predicted_labels: List[List[int]]):
+        """
+
+        Args:
+            predicted_labels (List[List[int]]): [description]
+
+        Returns:
+            [type]: [description]
+        """
+
         label_ids = np.arange(len(self.id_to_label)).tolist()
         # remove 'O' and '<pad>'
         label_ids.remove(0)

@@ -43,7 +43,7 @@ class NestedNERDatasetTest(unittest.TestCase):
             all([
                 k in vars(self.dataset.train[0]).keys()
                 for k in ['word', 'char', 'pos', 'subpos',
-                          'label1', 'label2', 'label3']
+                          'label0', 'label1', 'label2']
             ])
         )
 

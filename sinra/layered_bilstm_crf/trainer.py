@@ -47,12 +47,11 @@ class Trainer:
                 mask = mask.float().to(self.device)
                 word = self.dataset.WORD.vocab.vectors[data.word].to(
                     self.device)
-                char = None
-                # char = self.char_encoder(data.char, mask)
+                # char = None
+                char = self.char_encoder(data.char)
                 pos = self.dataset.POS.vocab.vectors[data.pos].to(self.device)
                 subpos = self.dataset.SUBPOS.vocab.vectors[data.subpos].to(
                     self.device)
-                # TODO ここで，char embeddingをCNNやBiLSTMに突っ込んで，他のベクトルと形を一緒にする必要がある
                 input_embed = NestedNERModel.first_input_embedding(
                     word, char, pos, subpos
                 )
@@ -63,8 +62,6 @@ class Trainer:
                         = self.model(input_embed, mask, labels, next_index)
                     batch_loss += loss
                     nested += 1
-                    print(nested)
-                    # TODO バッチ内の系列ごとにmerge_embeddingの長さが違うので，それらに対して，paddingを入れる必要がある
 
                 self.optimizer.zero_grad()
                 batch_loss.backward()
