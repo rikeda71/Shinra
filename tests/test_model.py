@@ -11,8 +11,8 @@ class NestedNERModelTest(unittest.TestCase):
 
     def setUp(self):
         self.label_to_id = {
-            'O': 0,
-            '<pad>': 1,
+            '<pad>': 0,
+            'O': 1,
             'B-PSN': 2,
             'I-PSN': 3,
             'B-LOC': 4,
@@ -71,7 +71,7 @@ class NestedNERModelTest(unittest.TestCase):
                                   ]
 
     def test_correct_predict(self):
-        correct_pred_label_id = NestedNERModel.correct_predict(self.plabel_id)
+        correct_pred_label_id = self.model.correct_predict(self.plabel_id)
         self.assertTrue(
             torch.equal(correct_pred_label_id[0], self.tlabel_id[0])
         )
@@ -103,13 +103,12 @@ class NestedNERModelTest(unittest.TestCase):
                          batch_first=True, bidirectional=True)
         x = torch.rand(batch_size, seq_len, hidden_size)
         h, _ = bilstm(x, None)
-        mr = NestedNERModel._merge_representation(h, self.test_matrix,
-                                                  self.true_entity_index)
-        self.assertEqual(len(mr), batch_size)
-        self.assertEqual(mr[0].shape, (5, hidden_size))
-        self.assertEqual(mr[1].shape, (5, hidden_size))
-        self.assertEqual(mr[2].shape, (6, hidden_size))
-        self.assertEqual(mr[3].shape, (6, hidden_size))
+        mr, next_mask = \
+            NestedNERModel._merge_representation(h, self.test_matrix,
+                                                 self.true_entity_index)
+        self.assertEqual(mr.shape[0], batch_size)
+        self.assertEqual(mr.shape[1], 6)
+        self.assertEqual(mr.shape[2], hidden_size)
 
     def test_extend_label(self):
         # first input test
@@ -117,8 +116,8 @@ class NestedNERModelTest(unittest.TestCase):
         extend_label = NestedNERModel._extend_label(
             self.tlabel_id, first_indexes)
         self.assertTrue(torch.equal(self.tlabel_id, extend_label))
-        before_label1 = [2, 0, 4, 0, 4, 1]
-        before_label2 = [4, 0, 2, 4, 0, 0]
+        before_label1 = [2, 1, 4, 1, 4, 0]
+        before_label2 = [4, 1, 2, 4, 1, 1]
         before_labels = torch.Tensor([before_label1,
                                       before_label1,
                                       before_label2,
@@ -152,7 +151,7 @@ class NestedNERModelTest(unittest.TestCase):
         mask[3, -1] = 0
         label_lens = [[1] * seq_len for _ in range(batch_size)]
 
-        score, next_step, predicted_labels, merge_emb, merge_idx = \
+        score, next_step, predicted_labels, merge_emb, merge_idx, next_mask = \
             self.model(input_emb, mask, self.tlabel_id, label_lens)
         self.assertTrue(type(score), torch.Tensor)
         self.assertTrue(type(next_step), bool)
@@ -160,3 +159,4 @@ class NestedNERModelTest(unittest.TestCase):
         self.assertTrue(type(predicted_labels[0]), torch.Tensor)
         self.assertTrue(type(merge_emb), torch.Tensor)
         self.assertTrue(type(merge_emb), torch.Tensor)
+        self.assertTrue(type(next_mask), torch.Tensor)

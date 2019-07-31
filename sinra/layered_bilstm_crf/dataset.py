@@ -37,51 +37,71 @@ class NestedNERDataset:
         self.CHAR = torchtext.data.NestedField(CHAR_NESTING)
         self.POS = torchtext.data.Field(batch_first=True)
         self.SUBPOS = torchtext.data.Field(batch_first=True)
+        self.LABELS = torchtext.data.Field(batch_first=True, unk_token=None)
+        self.fields = [(('word', 'char'), (self.WORD, self.CHAR)),
+                       ('pos', self.POS), ('subpos', self.SUBPOS)] + \
+            [('label{}'.format(i), self.LABELS)
+             for i in range(self.label_len)]
+        """
         self.LABELS = [torchtext.data.Field(batch_first=True, unk_token=None)
                        for _ in range(self.label_len)]
         self.fields = [(('word', 'char'), (self.WORD, self.CHAR)),
                        ('pos', self.POS), ('subpos', self.SUBPOS)] + \
-                      [('label{}'.format(i + 1), label)
-                       for i, label in enumerate(self.LABELS)]
+            [('label{}'.format(i), label)
+             for i, label in enumerate(self.LABELS)]
+        """
 
-        self.train, self.dev, self.test = torchtext.datasets.SequenceTaggingDataset.splits(
-            path=text_file_dir, train=train_txt, validation=dev_txt, test=test_txt,
-            separator='\t', fields=self.fields
-        )
+        self.train, self.dev, self.test = \
+            torchtext.datasets.SequenceTaggingDataset.splits(
+                path=text_file_dir, train=train_txt, validation=dev_txt, test=test_txt,
+                separator='\t', fields=self.fields
+            )
         self.WORD.build_vocab(self.train.word, self.dev.word, self.test.word,
                               vectors=Vectors(text_file_dir + wordemb_path),
                               min_freq=word_min_freq)
 
         # set randomize vectors for char, pos, and subpos embeddings
         if char_emb_dim > 0:
-            self.CHAR.build_vocab(self.train.char, self.dev.char, self.test.char)
+            self.CHAR.build_vocab(
+                self.train.char, self.dev.char, self.test.char)
             self.CHAR.vocab.set_vectors(
                 stoi=self.CHAR.vocab.stoi,
-                vectors=self._random_embedding(len(self.CHAR.vocab.itos), char_emb_dim),
+                vectors=self._random_embedding(
+                    len(self.CHAR.vocab.itos), char_emb_dim),
                 dim=char_emb_dim
             )
         if pos_emb_dim > 0:
-            self.POS.build_vocab(self.train.word, self.dev.word, self.test.word)
+            self.POS.build_vocab(
+                self.train.word, self.dev.word, self.test.word)
             self.POS.vocab.set_vectors(
                 stoi=self.POS.vocab.stoi,
-                vectors=self._random_embedding(len(self.POS.vocab.itos), pos_emb_dim),
+                vectors=self._random_embedding(
+                    len(self.POS.vocab.itos), pos_emb_dim),
                 dim=pos_emb_dim
             )
-            self.SUBPOS.build_vocab(self.train.word, self.dev.word, self.test.word)
+            self.SUBPOS.build_vocab(
+                self.train.word, self.dev.word, self.test.word)
             self.SUBPOS.vocab.set_vectors(
                 stoi=self.SUBPOS.vocab.stoi,
-                vectors=self._random_embedding(len(self.SUBPOS.vocab.itos), pos_emb_dim),
+                vectors=self._random_embedding(
+                    len(self.SUBPOS.vocab.itos), pos_emb_dim),
                 dim=pos_emb_dim
             )
 
+        """
         tmp_labels = set()
         for i in range(len(self.LABELS)):
             self.LABELS[i].build_vocab(self.train)
             tmp_labels |= set(self.LABELS[i].vocab.itos[1:])
         tmp_labels.remove('O')
-        self.id_to_label = ['O', '<pad>']
+        self.id_to_label = ['<pad>', 'O']
         self.id_to_label += sorted(list(tmp_labels),
                                    key=lambda x: (x[-1], x[0], x[2]))
+        """
+        self.LABELS.build_vocab(self.train)
+        self.LABELS.vocab.itos.sort(key=lambda x: (x[-1], x[0]))
+        self.LABELS.vocab.stoi = {s: i for i, s in
+                                  enumerate(self.LABELS.vocab.itos)}
 
         if use_gpu and torch.cuda.is_available():
             self.device = 'cuda'
@@ -99,7 +119,8 @@ class NestedNERDataset:
         assert dataset_name in ['train', 'dev', 'test']
         if dataset_name == 'train':
             return torchtext.data.BucketIterator(
-                dataset=self.train, batch_size=batch_size, device=torch.device(self.device),
+                dataset=self.train, batch_size=batch_size, device=torch.device(
+                    self.device),
                 sort=True, sort_key=lambda x: len(x.word), repeat=False, train=True
             )
         elif dataset_name == 'dev':
@@ -107,7 +128,8 @@ class NestedNERDataset:
         elif dataset_name == 'test':
             dataset = self.test
         return torchtext.data.BucketIterator(
-            dataset=dataset, batch_size=batch_size, device=torch.device(self.device),
+            dataset=dataset, batch_size=batch_size, device=torch.device(
+                self.device),
             sort=True, sort_key=lambda x: len(x.word), repeat=False, train=False
         )
 
@@ -124,7 +146,8 @@ class NestedNERDataset:
         return {'word': word_dim, 'char': char_dim,
                 'pos': pos_dim, 'subpos': subpos_dim}
 
-    def _random_embedding(self, vocab_size: int, embedding_dim: int) -> torch.Tensor:
+    @staticmethod
+    def _random_embedding(vocab_size: int, embedding_dim: int) -> torch.Tensor:
         """
         initialize char embedding
         ref. (End-to-end Sequence Labeling via Bi-directional LSTM-CNNs-CRF
@@ -137,5 +160,20 @@ class NestedNERDataset:
         pretrain_emb = np.empty([vocab_size, embedding_dim])
         scale = np.sqrt(3.0 / embedding_dim)
         for index in range(vocab_size):
-            pretrain_emb[index, :] = np.random.uniform(-scale, scale, [1, embedding_dim])
+            pretrain_emb[index, :] = \
+                np.random.uniform(-scale, scale, [1, embedding_dim])
         return torch.from_numpy(pretrain_emb).float()
+
+    @staticmethod
+    def get_batch_true_label(data, nested: int) -> torch.Tensor:
+        if nested == 0:
+            labels = data.label0
+        elif nested == 1:
+            labels = data.label1
+        elif nested == 2:
+            labels = data.label2
+        elif nested == 3:
+            labels = data.label3
+        elif nested == 4:
+            labels = data.label4
+        return labels

@@ -13,7 +13,7 @@ class NestedNERModel(nn.Module):
 
     def __init__(self, num_labels: int, dropout_rate: float,
                  word_emb_dim: int, char_emb_dim: int, pos_emb_dim: int,
-                 id_to_label: List[str], pad_idx: int = 1):
+                 id_to_label: List[str], pad_idx: int = 0):
         """
 
         :param num_labels:
@@ -36,10 +36,12 @@ class NestedNERModel(nn.Module):
             bidirectional=True
         )
         self.linear = nn.Linear(input_dim, num_labels)
-        self.crf = CRF(num_labels, pad_idx)
         self.dropout_layer = nn.Dropout(p=dropout_rate)
+        self.crf = CRF(num_labels, pad_idx)
+        self.pad_idx = pad_idx
 
-    def forward(self, input_embed, mask, labels, label_lens) -> Tuple[torch.Tensor, ...]:
+    def forward(self, input_embed, mask, labels, label_lens: List[List[int]]) \
+            -> Tuple[torch.Tensor, ...]:
 
         # indexは以下の工程で構築できる
         # index_s = torch.arange(torch.cat(words).shape[0]) # wordsは(batch_size, sequence_len)
@@ -49,7 +51,8 @@ class NestedNERModel(nn.Module):
 
         x = self.dropout_layer(input_embed)
         x = nn.utils.rnn.pack_padded_sequence(
-            x, mask.sum(1).int(), batch_first=True)
+            x, mask.sum(1).int(), batch_first=True, enforce_sorted=False
+        )
         h, _ = self.bilstm(x, None)  # (batch_size, sequence_len, hidden_size)
         h, _ = nn.utils.rnn.pad_packed_sequence(h, batch_first=True)
         out = self.linear(h)  # (hidden_size, num_labels)
@@ -58,18 +61,18 @@ class NestedNERModel(nn.Module):
         predicted_labels = self.crf.viterbi_decode(out, mask)
         next_step = self._is_next_step(predicted_labels)
         predicted_labels = self.correct_predict(predicted_labels)
-        expand_predicted = self._extend_label(predicted_labels, label_lens)
-        merge_index, label_lens = \
+        extend_predicted = self._extend_label(predicted_labels, label_lens)
+        merge_index, next_label_lens = \
             self._construct_merge_index(predicted_labels, mask)
-        merge_embed = self._merge_representation(h, merge_index,
-                                                 label_lens)
+        # self._construct_merge_index(extend_predicted, mask)
+        merge_embed, next_mask = \
+            self._merge_representation(h, merge_index, next_label_lens)
         return (-torch.mean(score, dim=0),
                 next_step,
-                expand_predicted,
-                merge_embed, merge_index)
+                extend_predicted,
+                merge_embed, next_label_lens, next_mask)
 
-    @staticmethod
-    def correct_predict(predicted_labels: List[List[int]]) -> torch.Tensor:
+    def correct_predict(self, predicted_labels: List[List[int]]) -> torch.Tensor:
         """
         Correct the prediction of the words
         e.g. IOOBIOIII -> BOOBIOBII
@@ -80,9 +83,9 @@ class NestedNERModel(nn.Module):
 
         split_lens = [len(l) for l in predicted_labels]
         # add padding label and to sequential
-        max_len = max(split_lens)
         seq_labels = [l for labels in predicted_labels
-                      for l in labels + [1] * (max_len - len(labels))]
+                      for l in labels]
+                      # for l in labels + [self.pad_idx] * (max_len - len(labels))]
         head_idx = np.array([sum(split_lens[:i])
                              for i in range(len(split_lens))])
         pl_tensor = np.array(seq_labels, dtype='int64')
@@ -100,11 +103,19 @@ class NestedNERModel(nn.Module):
         # - label[idx] != 'O'
         condition = ((pl_tensor[i_befores] % 2 == 0) |
                      (pl_tensor[i_befores] == pl_tensor[i_indexes])) & \
-                    (pl_tensor[i_befores] > 0)
+                    (pl_tensor[i_befores] > 1)
         pl_tensor[i_indexes] = \
             np.where(condition, pl_tensor[i_indexes], pl_tensor[i_indexes] - 1)
-        corrected_labels = torch.split(
-            torch.from_numpy(pl_tensor).long(), max_len)
+
+        corrected_labels = nn.utils.rnn.pad_sequence(
+            torch.split(torch.from_numpy(pl_tensor).long(), split_lens),
+            batch_first=True, padding_value=self.pad_idx
+        )
+        """
+        corrected_labels = torch.stack(
+            torch.split(torch.from_numpy(pl_tensor).long(), split_lens)
+        )
+        """
         return corrected_labels
 
     @staticmethod
@@ -119,13 +130,16 @@ class NestedNERModel(nn.Module):
         :return:
         """
         # (batch_size, sequence_len, embedding_dim)
-        x = torch.cat((words, chars, pos, subpos), dim=2)
+        x = torch.cat((words, pos, subpos), dim=2)
         return x
+        # x = torch.cat((words, chars, pos, subpos), dim=2)
+        # return x
 
     @staticmethod
     def _merge_representation(bilstm_output: torch.Tensor,
                               merge_index: torch.Tensor,
-                              label_lens: List[List[int]]) -> torch.Tensor:
+                              label_lens: List[List[int]]) \
+            -> Tuple[torch.Tensor, torch.Tensor]:
         """
 
         :param bilstm_output:
@@ -143,14 +157,21 @@ class NestedNERModel(nn.Module):
 
         ys = torch.div(ys, sum_index)
         split_index = [len(label_len) for label_len in label_lens]
+        # split_index = [sum(label_len) for label_len in label_lens]
 
         ys = F.split(ys, split_index, dim=0)
-
-        return ys
+        # ys = F.split(ys, max(split_index) * len(split_index), dim=0)
+        # ys = sorted(ys, key=lambda x: x.shape[0], reverse=True)
+        len_aranges = [torch.arange(y.shape[0]) for y in ys]
+        ys = nn.utils.rnn.pad_sequence(ys, batch_first=True)  # padding
+        new_mask = torch.zeros((ys.shape[0], ys.shape[1]))
+        for i, arange in enumerate(len_aranges):
+            new_mask[i, arange] = 1
+        return ys, new_mask
 
     @staticmethod
     def _extend_label(predicted_labels: torch.Tensor,
-                      label_lens: List[List[int]]) -> Tuple[torch.Tensor, ...]:
+                      label_lens: List[List[int]]) -> torch.Tensor:
         """
         extend labels predicted by model
         e.g. predicted_labels:BOBIO label_lens: [2, 1, 2, 1, 1]
@@ -172,11 +193,11 @@ class NestedNERModel(nn.Module):
         split_lens = [int(sum(l)) for l in label_lens]
 
         # remove false paddings and labels to sequential
-        no_pad_idx = predicted_labels != 1
+        no_pad_idx = predicted_labels != 0
         tmp_predicted = np.array([predicted_labels[i, :sum(idx)].numpy()
                                   for i, idx in enumerate(no_pad_idx)])
         seq_pred = np.concatenate(tmp_predicted)
-        # expand predicted labels of sequential format
+        # extend predicted labels of sequential format
         extend_idx = [np.array([i] * int(num))
                       for i, num in enumerate(idx_nums)]
         seq_pred = [seq_pred[idx] for idx in extend_idx]
@@ -194,16 +215,37 @@ class NestedNERModel(nn.Module):
         # `extend_trues`
         # True: I label
         # False: B or label
-        extend_trues = np.array([True] * int(seq_lens[-1] + 1))
+        extend_trues = np.array([True] * sum(idx_nums))
         extend_trues[ne_start_idx] = False
 
         # extend index -> I label, other index -> Label remains as `seq_pred`
         condition = extend_trues & (seq_pred % 2 == 0) & (seq_pred > 1)
         seq_pred = np.where(condition, seq_pred + 1, seq_pred)
-        seq_pred = torch.split(torch.from_numpy(seq_pred).long(), split_lens)
-
-        seq_pred = torch.stack(seq_pred)
+        seq_pred = torch.split(
+            torch.from_numpy(seq_pred).long(),
+            [max(split_lens)] * len(split_lens))
+        # seq_pred = torch.split(torch.from_numpy(seq_pred).long(), split_lens)
+        """
+        seq_pred = sorted(seq_pred,
+                          key=lambda x: int(x.shape[0]),
+                          reverse=True)
+        """
+        seq_pred = nn.utils.rnn.pad_sequence(
+            seq_pred, batch_first=True,
+        )
+        # seq_pred = torch.stack(seq_pred)
         return seq_pred
+
+    def shorten_label(self, labels: torch.Tensor, merge_index: List[List[int]]) \
+            -> torch.Tensor:
+        shorten_index = [torch.LongTensor([sum(index[:k]) for k, idx in enumerate(index)])
+                         for index in merge_index]
+        shorten_labels = [labels[k][indexes]
+                          for k, indexes in enumerate(shorten_index)]
+        shorten_labels = nn.utils.rnn.pad_sequence(
+            shorten_labels, batch_first=True, padding_value=self.pad_idx
+        )
+        return shorten_labels
 
     @staticmethod
     def _construct_merge_index(predicted_labels: torch.Tensor,
@@ -217,7 +259,7 @@ class NestedNERModel(nn.Module):
         seq_pls = np.array(seq_labels, dtype='int64')
         # seq_pls = predicted_labels.reshape(-1).numpy()
         # TODO if torch >= 1.2, use `torch.where`
-        b_or_o_indexes = np.where(seq_pls % 2 == 0)[0]
+        b_or_o_indexes = np.where((seq_pls % 2 == 0) | (seq_pls == 1))[0]
         i_indexes = np.where((seq_pls % 2 == 1) & (seq_pls > 1))[0]
 
         col_shape = b_or_o_indexes.shape[0]  # number of named entity
@@ -227,13 +269,13 @@ class NestedNERModel(nn.Module):
 
         # fill I labels
         i_label_lens = [seq_pls[0: elem] for elem in i_indexes]
-        entity_count = np.array([np.where(elem % 2 == 0)[0].shape[0]
+        entity_count = np.array([np.where((elem % 2 == 0) | (elem == 1))[0].shape[0]
                                  for elem in i_label_lens])
         # if i_indexes is empty
         # it becomes unnecessary as learning progresses
         if len(i_indexes) == 0:
-            label_lens = [[1] * int(seqlen) for seqlen in mask.sum(1).int()]
-            return (torch.from_numpy(merge_index).long(), label_lens)
+            label_lens = [[1] * mask.shape[1]] * mask.shape[0]
+            return torch.from_numpy(merge_index).long(), label_lens
         merge_index[i_indexes, entity_count - 1] = 1
 
         # each sentence
@@ -246,7 +288,7 @@ class NestedNERModel(nn.Module):
                        if i > 0 else index[i]
                        for i in range(len(index))]
                       for index in entity_end_index]
-        return (torch.from_numpy(merge_index).long(), label_lens)
+        return torch.from_numpy(merge_index).long(), label_lens
 
     def _is_next_step(self, predicted_labels: List[List[int]]):
         label_ids = np.arange(len(self.id_to_label)).tolist()

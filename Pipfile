@@ -21,7 +21,7 @@ requests = "*"
 tqdm = "*"
 mlflow = "*"
 torchtext = "*"
-torchcrf = "==1.0.3"
+torchcrf = "==1.0.4"
 torch = "*"
 
 [requires]

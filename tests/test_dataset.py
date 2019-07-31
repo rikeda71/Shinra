@@ -37,9 +37,8 @@ class NestedNERDatasetTest(unittest.TestCase):
         i = self.dataset.POS.vocab.stoi['サ変接続']
         self.assertFalse(torch.equal(self.dataset.SUBPOS.vocab.vectors[i], z))
         self.assertEqual(self.dataset.device, 'cpu')
-        self.assertEqual(len(self.dataset.LABELS), 3)
-        self.assertEqual(len(self.dataset.LABELS[1].vocab.stoi), 4)
-        self.assertEqual(len(self.dataset.id_to_label), 6)
+        self.assertEqual(self.dataset.label_len, 3)
+        self.assertEqual(len(self.dataset.LABELS.vocab.stoi), 6)
         self.assertTrue(
             all([
                 k in vars(self.dataset.train[0]).keys()
@@ -50,18 +49,17 @@ class NestedNERDatasetTest(unittest.TestCase):
 
     def test_get_batch(self):
 
-        iterator = self.dataset.get_batch(1, 'train')
+        iterator = self.dataset.get_batch(3, 'train')
         data = next(iter(iterator))
         self.assertTrue(iterator.train)
         self.assertEqual(type(data.word), torch.Tensor)
-        # sequence length = 18
-        self.assertEqual(data.word.shape[1], 18)
-        self.assertEqual(data.char.shape[1], 18)
-        self.assertEqual(data.pos.shape[1], 18)
-        self.assertEqual(data.subpos.shape[1], 18)
-        self.assertEqual(data.label1.shape[1], 18)
-        self.assertEqual(data.label2.shape[1], 18)
-        self.assertEqual(data.label3.shape[1], 18)
+        # sequence length = 20
+        self.assertEqual(data.word.shape[1], 20)
+        self.assertEqual(data.char.shape[1], 20)
+        self.assertEqual(data.pos.shape[1], 20)
+        self.assertEqual(data.subpos.shape[1], 20)
+        self.assertEqual(data.label1.shape[1], 20)
+        self.assertEqual(data.label2.shape[1], 20)
         # character max length in training data = 7
         self.assertEqual(data.char.shape[2], 7)
         iterator = self.dataset.get_batch(1, 'test')
