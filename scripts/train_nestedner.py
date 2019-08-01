@@ -112,7 +112,8 @@ def train(dataset_dir: str, word_vec_path: str,
     trainer = Trainer(model=model, dataset=dataset, lr=learning_rate,
                       cg=clip_grad_num, max_epoch=epoch_size,
                       batch_size=batch_size, char_hidden_dim=char_hidden_dim,
-                      dropout_rate=dropout_rate, optalgo=optalgo)
+                      dropout_rate=dropout_rate, optalgo=optalgo,
+                      save_path='data/result/{}.pth'.format(model_name))
     trainer.train()
 
 

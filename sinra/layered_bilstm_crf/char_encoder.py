@@ -45,12 +45,15 @@ class BiLSTMEncoder(nn.Module):
         )
         self.dropout_layer = nn.Dropout(p=dropout_rate)
         self.pad_idx = pad_idx
+        self.device = torch.device(
+            'cuda' if torch.cuda.is_available() else 'cpu'
+        )
 
     def forward(self, x: torch.LongTensor):
         mask = x != 1
         mask = mask.reshape(-1, mask.shape[-1])
         mask[torch.sum(mask, dim=1) == 0, 0] = 1
-        x = self.embedding[x]
+        x = self.embedding[x].to(self.device)
         batch_size, seq_len, max_char_num, vector_size = x.shape
         x = x.reshape(-1, max_char_num, vector_size)
         x = self.dropout_layer(x)

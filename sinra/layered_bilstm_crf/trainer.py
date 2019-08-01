@@ -20,7 +20,8 @@ class Trainer:
                  lr: float = 1e-3, cg: float = 5.0,
                  max_epoch: int = 50, batch_size: int = 64,
                  char_hidden_dim: int = 240, dropout_rate: float = 0.5,
-                 optalgo: torch.optim.Optimizer = torch.optim.Adam):
+                 optalgo: torch.optim.Optimizer = torch.optim.Adam,
+                 save_path: str = 'data/result/model.pth'):
         """
 
         Args:
@@ -31,6 +32,7 @@ class Trainer:
             max_epoch (int, optional): [description]. Defaults to 50.
             batch_size (int, optional): [description]. Defaults to 64.
             optalgo (torch.optim.Optimizer, optional): [description]. Defaults to torch.optim.Adam.
+            save_path (str, optional): [description]. Defaults to data/result/model.pth
         """
 
         self.device = torch.device(
@@ -49,6 +51,7 @@ class Trainer:
         self.epoch_size = max_epoch
         self.batch_size = batch_size
         self.optimizer = optalgo(self.model.parameters(), lr=lr)
+        self.save_path = save_path
 
     def train(self):
         for i in tqdm(range(self.epoch_size)):
@@ -64,7 +67,7 @@ class Trainer:
                 mask = mask.float().to(self.device)
                 word = self.dataset.WORD.vocab.vectors[data.word].to(
                     self.device)
-                char = self.char_encoder(data.char)
+                char = self.char_encoder(data.char.to(self.device))
                 pos = self.dataset.POS.vocab.vectors[data.pos].to(self.device)
                 subpos = self.dataset.SUBPOS.vocab.vectors[data.subpos].to(
                     self.device)
@@ -72,12 +75,18 @@ class Trainer:
                     word, char, pos, subpos
                 )
                 while next_step and self.dataset.label_len > nested:
-                    labels = self.dataset.get_batch_true_label(data, nested)
-                    labels = self.model.shorten_label(labels, next_index)
+                    true_labels = self.dataset.get_batch_true_label(data, nested)
+                    if torch.cuda.is_available():
+                        labels = self.model.module.shorten_label(true_labels, next_index)
+                    else:
+                        labels = self.model.shorten_label(true_labels, next_index)
                     loss, next_step, predicted_labels, input_embed, next_index, mask \
                         = self.model(input_embed, mask, labels, next_index)
                     batch_loss += loss
                     nested += 1
+                    print(true_labels.shape)
+                    print(predicted_labels.shape)
+                    print(true_labels.cpu() == predicted_labels.cpu())
 
                 self.optimizer.zero_grad()
                 batch_loss.backward()
@@ -85,6 +94,10 @@ class Trainer:
                 self.optimizer.step()
                 all_loss += batch_loss
             logger.info('epoch: {} loss: {}'.format(i + 1, all_loss))
+        self.save(self.save_path)
 
     def save(self, path: str):
-        torch.save(self.model.state_dict(), path)
+        if torch.cuda.is_available():
+            torch.save(self.model.module.state_dict(), path)
+        else:
+            torch.save(self.model.state_dict(), path)

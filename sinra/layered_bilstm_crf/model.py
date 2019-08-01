@@ -44,6 +44,9 @@ class NestedNERModel(nn.Module):
         self.dropout_layer = nn.Dropout(p=dropout_rate)
         self.crf = CRF(num_labels, pad_idx)
         self.pad_idx = pad_idx
+        self.device = torch.device(
+            'cuda' if torch.cuda.is_available() else 'cpu'
+        )
 
     def forward(self, input_embed: Tensor, mask: Tensor, labels: Tensor,
                 label_lens: List[List[int]]) \
@@ -146,6 +149,7 @@ class NestedNERModel(nn.Module):
         extend_predicted = self.extend_label(predicted_labels, label_lens)
         merge_index, next_label_lens = \
             self.make_merge_index(predicted_labels, mask)
+        merge_index = merge_index.to(self.device)
         merge_embed, next_mask = \
             self.merge_representation(out_embed, merge_index, next_label_lens)
         return (next_step, extend_predicted, merge_embed, next_label_lens, next_mask)

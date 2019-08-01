@@ -97,9 +97,9 @@ class NestedNERDataset:
         self.label_type = len(self.LABELS.vocab.itos)
 
         if use_gpu and torch.cuda.is_available():
-            self.device = 'cuda'
+            self.device = torch.device(0)
         else:
-            self.device = 'cpu'
+            self.device = torch.device(-1)
 
     def get_batch(self, batch_size: int, dataset_name: str = 'train'):
         """
@@ -115,8 +115,7 @@ class NestedNERDataset:
         assert dataset_name in ['train', 'dev', 'test']
         if dataset_name == 'train':
             return torchtext.data.BucketIterator(
-                dataset=self.train, batch_size=batch_size, device=torch.device(
-                    self.device),
+                dataset=self.train, batch_size=batch_size, device=self.device,
                 sort=True, sort_key=lambda x: len(x.word), repeat=False, train=True
             )
         elif dataset_name == 'dev':
@@ -124,8 +123,7 @@ class NestedNERDataset:
         elif dataset_name == 'test':
             dataset = self.test
         return torchtext.data.BucketIterator(
-            dataset=dataset, batch_size=batch_size, device=torch.device(
-                self.device),
+            dataset=dataset, batch_size=batch_size, device=self.device,
             sort=True, sort_key=lambda x: len(x.word), repeat=False, train=False
         )
 
@@ -168,8 +166,7 @@ class NestedNERDataset:
         embedding = torch.from_numpy(embedding)
         return embedding
 
-    @staticmethod
-    def get_batch_true_label(data: torchtext.data.batch,
+    def get_batch_true_label(self, data: torchtext.data.batch,
                              nested: int) -> torch.Tensor:
         """
 
@@ -191,4 +188,4 @@ class NestedNERDataset:
             labels = data.label3
         elif nested == 4:
             labels = data.label4
-        return labels
+        return labels.to(self.device)
