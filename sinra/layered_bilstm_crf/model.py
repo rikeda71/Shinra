@@ -1,8 +1,9 @@
-from typing import List, Tuple
+from typing import List, Tuple, Any
 import numpy as np
 import torch
 import torch.nn as nn
 import torch.functional as F
+from torch import Tensor
 from TorchCRF import CRF
 
 
@@ -43,19 +44,67 @@ class NestedNERModel(nn.Module):
         self.crf = CRF(num_labels, pad_idx)
         self.pad_idx = pad_idx
 
-    def forward(self, input_embed: torch.Tensor, mask: torch.Tensor,
-                labels: torch.Tensor,
-                label_lens: List[List[int]]) -> Tuple[torch.Tensor, ...]:
+    def forward(self, input_embed: Tensor, mask: Tensor, labels: Tensor,
+                label_lens: List[List[int]]) \
+            -> Tuple[Tensor, bool, Tensor, Tensor, List[List[int]], Tensor]:
         """
 
         Args:
-            input_embed (torch.Tensor): [description]
-            mask (torch.Tensor): [description]
-            labels (torch.Tensor): [description]
+            input_embed (Tensor): [description]
+            mask (Tensor): [description]
+            labels (Tensor): [description]
             label_lens (List[List[int]]): [description]
 
         Returns:
-            Tuple[torch.Tensor, ...]: [description]
+            Tuple[Tensor, bool, Tensor, Tensor, List[List[int]], Tensor]: [description]
+        """
+
+        out_embed, score, predicted_labels = \
+            self._forward(input_embed, mask, labels)
+        next_step, extend_predicted, merge_embed, next_label_lens, next_mask = \
+            self._prepare_next_forward(
+                out_embed, predicted_labels, label_lens, mask
+            )
+        return (score, next_step, extend_predicted,
+                merge_embed, next_label_lens, next_mask)
+
+    def predict(self, input_embed: Tensor,
+                mask: Tensor, label_lens: List[List[int]]) \
+            -> Tuple[bool, Tensor, Tensor, List[List[int]], Tensor]:
+        """
+
+        Args:
+            input_embed (Tensor): [description]
+            mask (Tensor): [description]
+            label_lens (List[List[int]]): [description]
+
+        Returns:
+            Tuple[bool, Tensor, Tensor, List[List[int]], Tensor]: [description]
+        """
+
+        with torch.no_grad():
+            out_embed, predicted_labels = \
+                self._forward(input_embed, mask, None, False)
+            next_step, extend_predicted, merge_embed, next_label_lens, next_mask = \
+                self._prepare_next_forward(
+                    out_embed, predicted_labels, label_lens, mask
+                )
+        return (next_step, extend_predicted,
+                merge_embed, next_label_lens, next_mask)
+
+    def _forward(self, input_embed: Tensor,
+                 mask: Tensor, labels: Tensor, train: bool = True) \
+            -> Tuple[Any]:
+        """
+
+        Args:
+            input_embed (Tensor): [description]
+            mask (Tensor): [description]
+            labels (Tensor): [description]
+            train (bool, optional): [description]. Defaults to True.
+
+        Returns:
+            Tuple[Tensor, Tensor, List[List[int]]]: [description]
         """
 
         x = self.dropout_layer(input_embed)
@@ -66,28 +115,48 @@ class NestedNERModel(nn.Module):
         h, _ = nn.utils.rnn.pad_packed_sequence(h, batch_first=True)
         out = self.linear(h)  # (hidden_size, num_labels)
         out *= mask.unsqueeze(-1)
-        score = self.crf(out, labels, mask)
-        predicted_labels = self.crf.viterbi_decode(out, mask)
+        if train:
+            score = self.crf(out, labels, mask)
+            predicted_labels = self.crf.viterbi_decode(out, mask)
+            return (h, -torch.mean(score, dim=0), predicted_labels)
+        else:
+            predicted_labels = self.crf.viterbi_decode(out, mask)
+            return (h, predicted_labels)
+
+    def _prepare_next_forward(self, out_embed: Tensor,
+                              predicted_labels: List[List[int]],
+                              label_lens: List[List[int]],
+                              mask: Tensor) \
+            -> Tuple[bool, Tensor, Tensor, List[List[int]], Tensor]:
+        """
+
+        Args:
+            out_embed (Tensor): [description]
+            predicted_labels (List[List[int]]): [description]
+            label_lens (List[List[int]]): [description]
+            mask (Tensor): [description]
+
+        Returns:
+            Tuple[bool, Tensor, Tensor, List[List[int]], Tensor]: [description]
+        """
+
         next_step = self._is_next_step(predicted_labels)
         predicted_labels = self._correct_predict(predicted_labels)
         extend_predicted = self.extend_label(predicted_labels, label_lens)
         merge_index, next_label_lens = \
             self.make_merge_index(predicted_labels, mask)
         merge_embed, next_mask = \
-            self.merge_representation(h, merge_index, next_label_lens)
-        return (-torch.mean(score, dim=0),
-                next_step,
-                extend_predicted,
-                merge_embed, next_label_lens, next_mask)
+            self.merge_representation(out_embed, merge_index, next_label_lens)
+        return (next_step, extend_predicted, merge_embed, next_label_lens, next_mask)
 
-    def _correct_predict(self, predicted_labels: List[List[int]]) -> torch.Tensor:
+    def _correct_predict(self, predicted_labels: List[List[int]]) -> Tensor:
         """
 
         Args:
             predicted_labels (List[List[int]]): [description]
 
         Returns:
-            torch.Tensor: [description]
+            Tensor: [description]
         """
 
         split_lens = [len(l) for l in predicted_labels]
@@ -123,18 +192,18 @@ class NestedNERModel(nn.Module):
         return corrected_labels
 
     @staticmethod
-    def first_input_embedding(words: torch.Tensor, chars: torch.Tensor,
-                              pos: torch.Tensor, subpos: torch.Tensor) -> torch.Tensor:
+    def first_input_embedding(words: Tensor, chars: Tensor,
+                              pos: Tensor, subpos: Tensor) -> Tensor:
         """
 
         Args:
-            words (torch.Tensor): [description]
-            chars (torch.Tensor): [description]
-            pos (torch.Tensor): [description]
-            subpos (torch.Tensor): [description]
+            words (Tensor): [description]
+            chars (Tensor): [description]
+            pos (Tensor): [description]
+            subpos (Tensor): [description]
 
         Returns:
-            torch.Tensor: [description]
+            Tensor: [description]
         """
 
         # (batch_size, seq_len, embedding_dim)
@@ -142,19 +211,19 @@ class NestedNERModel(nn.Module):
         return x
 
     @staticmethod
-    def merge_representation(bilstm_output: torch.Tensor,
-                             merge_index: torch.Tensor,
-                             label_lens: List[List[int]]) -> Tuple[torch.Tensor, ...]:
+    def merge_representation(bilstm_output: Tensor,
+                             merge_index: Tensor,
+                             label_lens: List[List[int]]) -> Tuple[Tensor, ...]:
         """
 
         :param bilstm_output: [description]
-        :type bilstm_output: torch.Tensor
+        :type bilstm_output: Tensor
         :param merge_index: [description]
-        :type merge_index: torch.Tensor
+        :type merge_index: Tensor
         :param label_lens: [description]
         :type label_lens: List[List[int]]
         :return: [description]
-        :rtype: Tuple[torch.Tensor, ...]
+        :rtype: Tuple[Tensor, ...]
         """
 
         batch_size, seq_len, hidden_size = bilstm_output.shape
@@ -177,18 +246,18 @@ class NestedNERModel(nn.Module):
         return ys, new_mask
 
     @staticmethod
-    def extend_label(predicted_labels: torch.Tensor,
-                     label_lens: List[List[int]]) -> torch.Tensor:
+    def extend_label(predicted_labels: Tensor,
+                     label_lens: List[List[int]]) -> Tensor:
         """
         extend labels predicted by model
         e.g. predicted_labels:BOBIO label_lens: [2, 1, 2, 1, 1]
             -> return BIOBIIO
         :param predicted_labels: [description]
-        :type predicted_labels: torch.Tensor
+        :type predicted_labels: Tensor
         :param label_lens: [description]
         :type label_lens: List[List[int]]
         :return: [description]
-        :rtype: torch.Tensor
+        :rtype: Tensor
         """
 
         # first input
@@ -236,16 +305,16 @@ class NestedNERModel(nn.Module):
         )
         return seq_pred
 
-    def shorten_label(self, labels: torch.Tensor,
-                      merge_index: List[List[int]]) -> torch.Tensor:
+    def shorten_label(self, labels: Tensor,
+                      merge_index: List[List[int]]) -> Tensor:
         """
 
         :param labels: [description]
-        :type labels: torch.Tensor
+        :type labels: Tensor
         :param merge_index: [description]
         :type merge_index: List[List[int]]
         :return: [description]
-        :rtype: torch.Tensor
+        :rtype: Tensor
         """
 
         shorten_index = [torch.LongTensor([sum(index[:k]) for k, idx in enumerate(index)])
@@ -258,16 +327,16 @@ class NestedNERModel(nn.Module):
         return shorten_labels
 
     @staticmethod
-    def make_merge_index(predicted_labels: torch.Tensor,
-                         mask: torch.Tensor) -> Tuple[torch.Tensor, List[List[int]]]:
+    def make_merge_index(predicted_labels: Tensor,
+                         mask: Tensor) -> Tuple[Tensor, List[List[int]]]:
         """
 
         Args:
-            predicted_labels (torch.Tensor): [description]
-            mask (torch.Tensor): [description]
+            predicted_labels (Tensor): [description]
+            mask (Tensor): [description]
 
         Returns:
-            Tuple[torch.Tensor, List[List[int]]]: [description]
+            Tuple[Tensor, List[List[int]]]: [description]
         """
 
         batch_size = len(predicted_labels)

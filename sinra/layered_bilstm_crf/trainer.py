@@ -19,15 +19,28 @@ class Trainer:
                  lr: float = 1e-3, cg: float = 5.0,
                  max_epoch: int = 50, batch_size: int = 64,
                  optalgo: torch.optim.Optimizer = torch.optim.Adam):
+        """
+
+        Args:
+            model (NestedNERModel): [description]
+            dataset (NestedNERDataset): [description]
+            lr (float, optional): [description]. Defaults to 1e-3.
+            cg (float, optional): [description]. Defaults to 5.0.
+            max_epoch (int, optional): [description]. Defaults to 50.
+            batch_size (int, optional): [description]. Defaults to 64.
+            optalgo (torch.optim.Optimizer, optional): [description]. Defaults to torch.optim.Adam.
+        """
 
         self.device = torch.device(
             'cuda' if torch.cuda.is_available() else 'cpu'
         )
         self.model: NestedNERModel = model.to(self.device)
+        if torch.cuda.is_available():
+            self.model = nn.DataParallel(model)
         self.dataset: NestedNERDataset = dataset
         self.char_encoder = BiLSTMEncoder(
-            self.dataset.CHAR.vocab.vectors, 50, 50
-        )
+            self.dataset.CHAR.vocab.vectors, 50, 50, 0
+        ).to(self.device)
         self.cg = cg
         self.epoch_size = max_epoch
         self.batch_size = batch_size
@@ -47,7 +60,6 @@ class Trainer:
                 mask = mask.float().to(self.device)
                 word = self.dataset.WORD.vocab.vectors[data.word].to(
                     self.device)
-                # char = None
                 char = self.char_encoder(data.char)
                 pos = self.dataset.POS.vocab.vectors[data.pos].to(self.device)
                 subpos = self.dataset.SUBPOS.vocab.vectors[data.subpos].to(

@@ -29,12 +29,12 @@ class NestedNERDatasetTest(unittest.TestCase):
         z = torch.zeros((50, ))
         i = self.dataset.CHAR.vocab.stoi['の']
         self.assertFalse(torch.equal(self.dataset.CHAR.vocab.vectors[i], z))
-        i = self.dataset.CHAR.vocab.stoi['製造']
+        i = self.dataset.CHAR.vocab.stoi['製']
         self.assertFalse(torch.equal(self.dataset.CHAR.vocab.vectors[i], z))
         z = torch.zeros((5, ))
         i = self.dataset.POS.vocab.stoi['名詞']
         self.assertFalse(torch.equal(self.dataset.POS.vocab.vectors[i], z))
-        i = self.dataset.POS.vocab.stoi['サ変接続']
+        i = self.dataset.SUBPOS.vocab.stoi['サ変接続']
         self.assertFalse(torch.equal(self.dataset.SUBPOS.vocab.vectors[i], z))
         self.assertEqual(self.dataset.device, 'cpu')
         self.assertEqual(self.dataset.label_len, 3)

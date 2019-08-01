@@ -1,6 +1,7 @@
 from typing import Dict
 import numpy as np
 import torch
+import torch.nn as nn
 import torchtext
 from torchtext.vocab import Vectors
 
@@ -73,7 +74,7 @@ class NestedNERDataset:
             )
         if pos_emb_dim > 0:
             self.POS.build_vocab(
-                self.train.word, self.dev.word, self.test.word)
+                self.train.pos, self.dev.pos, self.test.pos)
             self.POS.vocab.set_vectors(
                 stoi=self.POS.vocab.stoi,
                 vectors=self._random_embedding(
@@ -81,7 +82,7 @@ class NestedNERDataset:
                 dim=pos_emb_dim
             )
             self.SUBPOS.build_vocab(
-                self.train.word, self.dev.word, self.test.word)
+                self.train.subpos, self.dev.subpos, self.test.subpos)
             self.SUBPOS.vocab.set_vectors(
                 stoi=self.SUBPOS.vocab.stoi,
                 vectors=self._random_embedding(
@@ -155,12 +156,16 @@ class NestedNERDataset:
             torch.Tensor: initialized vectors (vocab_size, embedding_dim)
         """
 
-        pretrain_emb = np.empty([vocab_size, embedding_dim])
+        embedding = np.empty([vocab_size, embedding_dim])
         scale = np.sqrt(3.0 / embedding_dim)
         for index in range(vocab_size):
-            pretrain_emb[index, :] = \
+            embedding[index, :] = \
                 np.random.uniform(-scale, scale, [1, embedding_dim])
-        return torch.from_numpy(pretrain_emb).float()
+        # unknown and padding index -> 0 vectors
+        embedding[0, :] = 0
+        embedding[1, :] = 0
+        embedding = torch.from_numpy(embedding)
+        return embedding
 
     @staticmethod
     def get_batch_true_label(data: torchtext.data.batch,

@@ -26,7 +26,7 @@ class TrainerTest(unittest.TestCase):
                                     pos_emb_dim=dim['pos'],
                                     id_to_label=self.label_to_id)
         self.trainer = Trainer(
-            model=self.model, dataset=self.dataset, max_epoch=100, batch_size=4
+            model=self.model, dataset=self.dataset, max_epoch=10, batch_size=4
         )
 
     def test_train(self):
