@@ -21,7 +21,7 @@ class CNNEncoder(nn.Module):
 
 class BiLSTMEncoder(nn.Module):
     def __init__(self, char_embedding: torch.Tensor, embedding_dim: int,
-                 hidden_size: int, dropout_rate: float = 0, pad_idx: int = 1):
+                 hidden_size: int, dropout_rate: float = 0.5, pad_idx: int = 1):
         """
 
         Args:
@@ -33,10 +33,11 @@ class BiLSTMEncoder(nn.Module):
         """
 
         super().__init__()
+        self.hidden_size = hidden_size
         self.embedding = char_embedding
         self.char_encoder = nn.LSTM(
             input_size=embedding_dim,
-            hidden_size=hidden_size // 2,
+            hidden_size=hidden_size,
             num_layers=1,
             bias=True,
             batch_first=True,
@@ -58,6 +59,6 @@ class BiLSTMEncoder(nn.Module):
         )
         h, _ = self.char_encoder(x, None)
         h, _ = nn.utils.rnn.pad_packed_sequence(h, batch_first=True)
-        h = h[:, -1, :]  # use only last embedding
+        h = h[:, 0, :self.hidden_size] + h[:, -1, self.hidden_size:]
         embed = h.reshape(batch_size, seq_len, -1)
         return embed
