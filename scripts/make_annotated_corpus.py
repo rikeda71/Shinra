@@ -39,7 +39,7 @@ def json_reformatting(json_dir: str, json_class: str) \
         content += ''.join(
             [re.sub(r'}\n', '},\n', line)
                 for line in f.readlines()]
-        )[:-2] + ']'
+        ) + ']'
     json_contents = json.loads(content)
     for json_content in json_contents:
         html_offset = json_content['html_offset']
