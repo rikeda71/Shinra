@@ -23,8 +23,7 @@ class TrainerTest(unittest.TestCase):
         self.model = NestedNERModel(num_labels=6, dropout_rate=0.5,
                                     word_emb_dim=dim['word'],
                                     char_emb_dim=dim['char'],
-                                    pos_emb_dim=dim['pos'],
-                                    id_to_label=self.label_to_id)
+                                    pos_emb_dim=dim['pos'])
         self.trainer = Trainer(
             model=self.model, dataset=self.dataset, max_epoch=10, batch_size=4
         )

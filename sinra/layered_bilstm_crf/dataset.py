@@ -14,7 +14,7 @@ class NestedNERDataset:
     def __init__(self, text_file_dir: str, train_txt: str = 'train.txt',
                  dev_txt: str = 'dev.txt', test_txt: str = 'test.txt',
                  wordemb_path: str = 'embedding.txt', use_gpu: bool = True,
-                 word_min_freq: int = 3, char_emb_dim: int = 50,
+                 word_min_freq: int = 3, char_emb_dim: int = 640,
                  pos_emb_dim: int = 5):
         """
 
@@ -59,7 +59,7 @@ class NestedNERDataset:
                 separator='\t', fields=self.fields
             )
         self.WORD.build_vocab(self.train.word, self.dev.word, self.test.word,
-                              vectors=Vectors(text_file_dir + wordemb_path),
+                              vectors=Vectors(wordemb_path),
                               min_freq=word_min_freq)
 
         # set randomize vectors for char, pos, and subpos embeddings
@@ -94,6 +94,7 @@ class NestedNERDataset:
         self.LABELS.vocab.itos.sort(key=lambda x: (x[-1], x[0]))
         self.LABELS.vocab.stoi = {s: i for i, s in
                                   enumerate(self.LABELS.vocab.itos)}
+        self.label_type = len(self.LABELS.vocab.itos)
 
         if use_gpu and torch.cuda.is_available():
             self.device = 'cuda'

@@ -1,5 +1,6 @@
 from logging import getLogger, StreamHandler, INFO
 
+from tqdm import tqdm
 import torch
 import torch.nn as nn
 
@@ -18,6 +19,7 @@ class Trainer:
     def __init__(self, model: NestedNERModel, dataset: NestedNERDataset,
                  lr: float = 1e-3, cg: float = 5.0,
                  max_epoch: int = 50, batch_size: int = 64,
+                 char_hidden_dim: int = 240, dropout_rate: float = 0.5,
                  optalgo: torch.optim.Optimizer = torch.optim.Adam):
         """
 
@@ -38,8 +40,10 @@ class Trainer:
         if torch.cuda.is_available():
             self.model = nn.DataParallel(model)
         self.dataset: NestedNERDataset = dataset
+        char_embed = self.dataset.get_embedding_dim()['char']
         self.char_encoder = BiLSTMEncoder(
-            self.dataset.CHAR.vocab.vectors, 50, 50, 0
+            self.dataset.CHAR.vocab.vectors,
+            char_embed, char_hidden_dim, dropout_rate
         ).to(self.device)
         self.cg = cg
         self.epoch_size = max_epoch
@@ -47,7 +51,7 @@ class Trainer:
         self.optimizer = optalgo(self.model.parameters(), lr=lr)
 
     def train(self):
-        for i in range(self.epoch_size):
+        for i in tqdm(range(self.epoch_size)):
             all_loss = 0.0
             iterator = self.dataset.get_batch(self.batch_size)
             for j, data in enumerate(iterator):
@@ -81,3 +85,6 @@ class Trainer:
                 self.optimizer.step()
                 all_loss += batch_loss
             logger.info('epoch: {} loss: {}'.format(i + 1, all_loss))
+
+    def save(self, path: str):
+        torch.save(self.model.state_dict(), path)

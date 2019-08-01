@@ -14,7 +14,7 @@ class NestedNERModel(nn.Module):
 
     def __init__(self, num_labels: int, dropout_rate: float,
                  word_emb_dim: int, char_emb_dim: int, pos_emb_dim: int,
-                 id_to_label: List[str], pad_idx: int = 0):
+                 pad_idx: int = 0):
         """
 
         Args:
@@ -23,13 +23,14 @@ class NestedNERModel(nn.Module):
             word_emb_dim (int): [description]
             char_emb_dim (int): [description]
             pos_emb_dim (int): [description]
-            id_to_label (List[str]): [description]
             pad_idx (int, optional): [description]. Defaults to 0.
         """
 
         super().__init__()
         input_dim = word_emb_dim + char_emb_dim + pos_emb_dim * 2
-        self.id_to_label = id_to_label
+        self.USE_CHAR = True if char_emb_dim > 0 else False
+        self.USE_POS = True if pos_emb_dim > 0 else False
+        self.num_labels = num_labels
         # bilstm output -> next bilstm input. So, hidden_size == input_size
         self.bilstm = nn.LSTM(
             input_size=input_dim,
@@ -192,8 +193,8 @@ class NestedNERModel(nn.Module):
         return corrected_labels
 
     @staticmethod
-    def first_input_embedding(words: Tensor, chars: Tensor,
-                              pos: Tensor, subpos: Tensor) -> Tensor:
+    def first_input_embedding(words: Tensor, chars: Tensor = None,
+                              pos: Tensor = None, subpos: Tensor = None) -> Tensor:
         """
 
         Args:
@@ -387,7 +388,7 @@ class NestedNERModel(nn.Module):
             [type]: [description]
         """
 
-        label_ids = np.arange(len(self.id_to_label)).tolist()
+        label_ids = np.arange(self.num_labels).tolist()
         # remove 'O' and '<pad>'
         label_ids.remove(0)
         label_ids.remove(1)

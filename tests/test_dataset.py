@@ -11,14 +11,15 @@ class NestedNERDatasetTest(unittest.TestCase):
     def setUp(self):
         self.dataset = NestedNERDataset(text_file_dir='tests/',
                                         use_gpu=False,
-                                        word_min_freq=0)
+                                        word_min_freq=0,
+                                        wordemb_path='tests/embedding.txt')
 
     def test_initialize_variables(self):
 
         self.assertEqual(len(self.dataset.WORD.vocab.itos), 42)
         self.assertEqual(self.dataset.WORD.vocab.vectors.shape[1], 500)
         self.assertEqual(len(self.dataset.CHAR.vocab.itos), 63)
-        self.assertEqual(self.dataset.CHAR.vocab.vectors.shape[1], 50)
+        self.assertEqual(self.dataset.CHAR.vocab.vectors.shape[1], 640)
         self.assertEqual(self.dataset.POS.vocab.vectors.shape[1], 5)
         self.assertEqual(self.dataset.POS.vocab.vectors.shape[1], 5)
         z = torch.zeros((500, ))
@@ -69,7 +70,7 @@ class NestedNERDatasetTest(unittest.TestCase):
 
         dims = self.dataset.get_embedding_dim()
         self.assertEqual(dims['word'], 500)
-        self.assertEqual(dims['char'], 50)
+        self.assertEqual(dims['char'], 640)
         self.assertEqual(dims['pos'], 5)
         self.assertEqual(dims['subpos'], 5)
 
