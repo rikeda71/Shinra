@@ -14,7 +14,7 @@ class NestedNERModel(nn.Module):
 
     def __init__(self, num_labels: int, dropout_rate: float,
                  word_emb_dim: int, char_emb_dim: int, pos_emb_dim: int,
-                 pad_idx: int = 0):
+                 pad_idx: int = 0, other_idx: int = 1):
         """
 
         Args:
@@ -24,6 +24,7 @@ class NestedNERModel(nn.Module):
             char_emb_dim (int): [description]
             pos_emb_dim (int): [description]
             pad_idx (int, optional): [description]. Defaults to 0.
+            other_idx (int, optional): [description]. Defaults to 1.
         """
 
         super().__init__()
@@ -44,6 +45,7 @@ class NestedNERModel(nn.Module):
         self.dropout_layer = nn.Dropout(p=dropout_rate)
         self.crf = CRF(num_labels, pad_idx)
         self.pad_idx = pad_idx
+        self.other_idx = other_idx
         self.device = torch.device(
             'cuda' if torch.cuda.is_available() else 'cpu'
         )
@@ -196,8 +198,7 @@ class NestedNERModel(nn.Module):
         )
         return corrected_labels
 
-    @staticmethod
-    def first_input_embedding(words: Tensor, chars: Tensor = None,
+    def first_input_embedding(self, words: Tensor, chars: Tensor = None,
                               pos: Tensor = None, subpos: Tensor = None) -> Tensor:
         """
 
@@ -212,7 +213,7 @@ class NestedNERModel(nn.Module):
         """
 
         # (batch_size, seq_len, embedding_dim)
-        x = torch.cat((words, chars, pos, subpos), dim=2)
+        x = torch.cat((words, chars, pos, subpos), dim=2).to(self.device)
         return x
 
     @staticmethod
@@ -232,6 +233,8 @@ class NestedNERModel(nn.Module):
         """
 
         batch_size, seq_len, hidden_size = bilstm_output.shape
+        # paddingもそのままにしてしまっている
+        # TODO paddingは削除して系列にしたい
         ys = bilstm_output.detach().reshape(batch_size * seq_len, hidden_size)
         ys = torch.matmul(torch.t(merge_index.float()), ys)
 
@@ -240,12 +243,16 @@ class NestedNERModel(nn.Module):
         sum_index = torch.t(sum_index)
 
         ys = torch.div(ys, sum_index)
-        split_index = [len(label_len) for label_len in label_lens]
+        split_index = [len(label_len) + seq_len - sum(label_len)
+                       for label_len in label_lens]
 
         ys = F.split(ys, split_index, dim=0)
         len_aranges = [torch.arange(y.shape[0]) for y in ys]
         ys = nn.utils.rnn.pad_sequence(ys, batch_first=True)  # padding
-        new_mask = torch.zeros((ys.shape[0], ys.shape[1]))
+        # TODO maskが全部1になってしまっているから，系列の長さがうまく合わなくなって，エラーを起こしている可能性がある
+        # ys.shape[0]が`len_aranges`の長さを決定するために使われているが，ys.shape[0]はsplit_indexを元に決定する
+        # つまり，split_indexを作成する元になっているlabel_lensが悪い可能性もある
+        new_mask = torch.zeros(ys.shape[:2])
         for i, arange in enumerate(len_aranges):
             new_mask[i, arange] = 1
         return ys, new_mask
@@ -266,7 +273,9 @@ class NestedNERModel(nn.Module):
         """
 
         # first input
-        if all([label_len == ([1] * len(label_len)) for label_len in label_lens]):
+        # TODO ここは全ての系列がO or <pad>になったら終わるという条件にしなければいけない
+        # 以下の二行であってそう？
+        if torch.equal((predicted_labels > 1).long(), torch.zeros_like(predicted_labels)):
             return predicted_labels
 
         # prepare sequential idx_nums and each sequence lens
@@ -275,7 +284,7 @@ class NestedNERModel(nn.Module):
 
         # remove false paddings and labels to sequential
         no_pad_idx = predicted_labels != 0
-        tmp_predicted = np.array([predicted_labels[i, :sum(idx)].numpy()
+        tmp_predicted = np.array([predicted_labels[i, :int(torch.sum(idx))].numpy()
                                   for i, idx in enumerate(no_pad_idx)])
         seq_pred = np.concatenate(tmp_predicted)
         # extend predicted labels of sequential format
@@ -302,9 +311,15 @@ class NestedNERModel(nn.Module):
         # extend index -> I label, other index -> Label remains as `seq_pred`
         condition = extend_trues & (seq_pred % 2 == 0) & (seq_pred > 1)
         seq_pred = np.where(condition, seq_pred + 1, seq_pred)
+        """
         seq_pred = torch.split(
             torch.from_numpy(seq_pred).long(),
             [max(split_lens)] * len(split_lens))
+        """
+        seq_pred = torch.split(
+            torch.from_numpy(seq_pred).long(),
+            split_lens
+        )
         seq_pred = nn.utils.rnn.pad_sequence(
             seq_pred, batch_first=True,
         )
@@ -365,6 +380,8 @@ class NestedNERModel(nn.Module):
                                  for elem in i_label_lens])
         # if i_indexes is empty
         # it becomes unnecessary as learning progresses
+        # ここはあってた
+        # maskの長さが全て同じ時にエラーをはいているように見える
         if len(i_indexes) == 0:
             label_lens = [[1] * mask.shape[1]] * mask.shape[0]
             return torch.from_numpy(merge_index).long(), label_lens
@@ -378,8 +395,10 @@ class NestedNERModel(nn.Module):
                             for idx in batch_merge_index]
         label_lens = [[index[i] - index[i - 1]
                        if i > 0 else index[i]
-                       for i in range(len(index))]
-                      for index in entity_end_index]
+                       for i in range(len(index))
+                       if mask[k, index[i] - 1] > 0]
+                      for k, index in enumerate(entity_end_index)]
+
         return torch.from_numpy(merge_index).long(), label_lens
 
     def _is_next_step(self, predicted_labels: List[List[int]]):

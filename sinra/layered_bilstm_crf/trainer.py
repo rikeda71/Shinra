@@ -71,7 +71,7 @@ class Trainer:
                 pos = self.dataset.POS.vocab.vectors[data.pos].to(self.device)
                 subpos = self.dataset.SUBPOS.vocab.vectors[data.subpos].to(
                     self.device)
-                input_embed = NestedNERModel.first_input_embedding(
+                input_embed = self.model.module.first_input_embedding(
                     word, char, pos, subpos
                 )
                 while next_step and self.dataset.label_len > nested:
@@ -84,9 +84,6 @@ class Trainer:
                         = self.model(input_embed, mask, labels, next_index)
                     batch_loss += loss
                     nested += 1
-                    print(true_labels.shape)
-                    print(predicted_labels.shape)
-                    print(true_labels.cpu() == predicted_labels.cpu())
 
                 self.optimizer.zero_grad()
                 batch_loss.backward()

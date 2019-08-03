@@ -99,7 +99,7 @@ class NestedNERDataset:
         if use_gpu and torch.cuda.is_available():
             self.device = torch.device(0)
         else:
-            self.device = torch.device(-1)
+            self.device = torch.device('cpu')
 
     def get_batch(self, batch_size: int, dataset_name: str = 'train'):
         """
