@@ -92,6 +92,7 @@ def get_annotated_label_info(sentence: str) -> List[Tuple[str, int, int]]:
     :rtype: List[Tuple[str, int, int]]
     """
 
+    sentence = sentence.replace(' ', '')  # remove white spaces
     only_insert_mark = re.sub(r'\[/l-.+?\]', '', sentence)
     only_close_mark = re.sub(r'\[l-.+?\]', '', sentence)
     insert_idx = get_mark_indexes_and_label(
