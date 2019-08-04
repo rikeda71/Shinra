@@ -3,6 +3,7 @@ from logging import getLogger, StreamHandler, INFO
 from tqdm import tqdm
 import torch
 import torch.nn as nn
+import slackweb
 
 from .model import NestedNERModel
 from .dataset import NestedNERDataset
@@ -63,7 +64,7 @@ class Trainer:
                 next_step = True  # while this value is True, train a batch
                 # make mask
                 mask = data.label0 != 0
-                next_index = [[1] * int(torch.sum(word)) for word in mask]
+                next_label_lens = [[1] * int(torch.sum(word)) for word in mask]
                 mask = mask.float().to(self.device)
                 word = self.dataset.WORD.vocab.vectors[data.word].to(
                     self.device)
@@ -75,16 +76,20 @@ class Trainer:
                     word, char, pos, subpos
                 )
                 while next_step and self.dataset.label_len > nested:
-                    true_labels = self.dataset.get_batch_true_label(data, nested)
+                    true_labels = self.dataset.get_batch_true_label(
+                        data, nested)
                     if torch.cuda.is_available():
-                        labels = self.model.module.shorten_label(true_labels, next_index)
+                        model = self.model.module
                     else:
-                        labels = self.model.shorten_label(true_labels, next_index)
-                    loss, next_step, predicted_labels, input_embed, next_index, mask \
-                        = self.model(input_embed, mask, labels, next_index)
+                        model = self.model
+                    labels = model.shorten_label(
+                        true_labels, next_label_lens)
+                    # TODO CRFの方でエラーが出ていたので，正解ラベルを出力して確認する
+                    print('labels', [label for label in labels])
+                    loss, next_step, _, input_embed, next_label_lens, mask \
+                        = self.model(input_embed, mask, labels, next_label_lens)
                     batch_loss += loss
                     nested += 1
-
                 self.optimizer.zero_grad()
                 batch_loss.backward()
                 nn.utils.clip_grad_norm_(self.model.parameters(), self.cg)
@@ -92,6 +97,9 @@ class Trainer:
                 all_loss += batch_loss
             logger.info('epoch: {} loss: {}'.format(i + 1, all_loss))
         self.save(self.save_path)
+        slack = slackweb.Slack(
+            url='https://hooks.slack.com/services/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')
+        slack.notify(text='実験終わり')
 
     def save(self, path: str):
         if torch.cuda.is_available():
