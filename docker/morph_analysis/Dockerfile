@@ -25,11 +25,8 @@ RUN apt update && apt install -q -y \
     && cd ../ \
     && rm -rf jumanpp-1.02* \
     && pip3 install -q pyknp \
-    && pip3 install -q -e git+git://github.com/WorksApplications/SudachiPy@develop#egg=SudachiPy \
-    && wget -q https://object-storage.tyo2.conoha.io/v1/nc_2520839e1f9641b08211a5c85243124a/sudachi/sudachi-dictionary-20190531-full.zip \
-    && unzip sudachi-dictionary-20190531-full.zip \
-    && mv sudachi-dictionary-20190531/system_full.dic /src/sudachipy/resources/system.dic \
-    && rm -rf sudachi-dictionary-20190531* \
+    && pip3 install SudachiPy \
+    && pip3 install https://object-storage.tyo2.conoha.io/v1/nc_2520839e1f9641b08211a5c85243124a/sudachi/SudachiDict_core-20190718.tar.gz \
     && mkdir -p /home \
     && echo "NEOLOGD_PATH=`mecab-config --dicdir`/mecab-ipadic-neologd" >> /home/.env \
     && apt-get clean \
