@@ -3,7 +3,6 @@ from logging import getLogger, StreamHandler, INFO
 from tqdm import tqdm
 import torch
 import torch.nn as nn
-import slackweb
 
 from .model import NestedNERModel
 from .dataset import NestedNERDataset
@@ -32,7 +31,8 @@ class Trainer:
             cg (float, optional): [description]. Defaults to 5.0.
             max_epoch (int, optional): [description]. Defaults to 50.
             batch_size (int, optional): [description]. Defaults to 64.
-            optalgo (torch.optim.Optimizer, optional): [description]. Defaults to torch.optim.Adam.
+            optalgo (torch.optim.Optimizer, optional): [description].
+             Defaults to torch.optim.Adam.
             save_path (str, optional): [description]. Defaults to data/result/model.pth
         """
 
@@ -82,10 +82,8 @@ class Trainer:
                         model = self.model.module
                     else:
                         model = self.model
-                    labels = model.shorten_label(
-                        true_labels, next_label_lens)
-                    # TODO CRFの方でエラーが出ていたので，正解ラベルを出力して確認する
-                    print('labels', [label for label in labels])
+                    labels = model.shorten_label(true_labels, next_label_lens) \
+                        if nested > 0 else true_labels
                     loss, next_step, _, input_embed, next_label_lens, mask \
                         = self.model(input_embed, mask, labels, next_label_lens)
                     batch_loss += loss
@@ -97,9 +95,6 @@ class Trainer:
                 all_loss += batch_loss
             logger.info('epoch: {} loss: {}'.format(i + 1, all_loss))
         self.save(self.save_path)
-        slack = slackweb.Slack(
-            url='https://hooks.slack.com/services/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')
-        slack.notify(text='実験終わり')
 
     def save(self, path: str):
         if torch.cuda.is_available():
