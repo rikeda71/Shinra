@@ -132,8 +132,6 @@ class NestedNERModelTest(unittest.TestCase):
         mask[1, -1] = 0
         extend_label = self.model.extend_label(
             before_labels, self.true_entity_index, mask)
-        print(extend_label)
-        print(self.tlabel_id)
         self.assertTrue(torch.equal(self.tlabel_id.cpu(), extend_label))
 
     def test_shorten_label(self):
@@ -170,7 +168,6 @@ class NestedNERModelTest(unittest.TestCase):
         mask[3, -1] = 0
         label_lens = [[1] * int(torch.sum(m)) for m in mask]
 
-        print('----------------------------')
         score, next_step, predicted_labels, merge_emb, merge_idx, next_mask = \
             self.model(input_emb, mask, self.tlabel_id, label_lens)
         self.assertTrue(type(score), torch.Tensor)
@@ -180,4 +177,3 @@ class NestedNERModelTest(unittest.TestCase):
         self.assertTrue(type(merge_emb), torch.Tensor)
         self.assertTrue(type(merge_emb), torch.Tensor)
         self.assertTrue(type(next_mask), torch.Tensor)
-        print(merge_idx)
