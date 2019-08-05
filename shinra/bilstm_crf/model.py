@@ -1,13 +1,9 @@
 from typing import List, Tuple, Any
-import itertools
 
-import numpy as np
 import torch
 import torch.nn as nn
-import torch.functional as F
 from torch import Tensor
 from TorchCRF import CRF
-import slackweb
 
 
 class BiLSTMCRF(nn.Module):

@@ -5,9 +5,9 @@ import numpy as np
 import torch
 
 from load_config import config_setup_print
-from sinra.layered_bilstm_crf.trainer import Trainer
-from sinra.layered_bilstm_crf.model import NestedNERModel
-from sinra.layered_bilstm_crf.dataset import NestedNERDataset
+from shinra.layered_bilstm_crf.trainer import Trainer
+from shinra.layered_bilstm_crf.model import NestedNERModel
+from shinra.layered_bilstm_crf.dataset import NestedNERDataset
 
 logging.basicConfig(filename='NestedNER_experiment.log',
                     level=logging.INFO)

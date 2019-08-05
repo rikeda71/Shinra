@@ -72,16 +72,16 @@ class Trainer:
                 pos = self.dataset.POS.vocab.vectors[data.pos].to(self.device)
                 subpos = self.dataset.SUBPOS.vocab.vectors[data.subpos].to(
                     self.device)
-                input_embed = self.model.module.first_input_embedding(
+                if torch.cuda.is_available():
+                    model = self.model.module
+                else:
+                    model = self.model
+                input_embed = model.first_input_embedding(
                     word, char, pos, subpos
                 )
                 while next_step and self.dataset.label_len > nested:
                     true_labels = self.dataset.get_batch_true_label(
                         data, nested)
-                    if torch.cuda.is_available():
-                        model = self.model.module
-                    else:
-                        model = self.model
                     labels = model.shorten_label(true_labels, next_label_lens) \
                         if nested > 0 else true_labels
                     loss, next_step, _, input_embed, next_label_lens, mask \
@@ -93,6 +93,7 @@ class Trainer:
                 nn.utils.clip_grad_norm_(self.model.parameters(), self.cg)
                 self.optimizer.step()
                 all_loss += batch_loss
+
             logger.info('epoch: {} loss: {}'.format(i + 1, all_loss))
         self.save(self.save_path)
 

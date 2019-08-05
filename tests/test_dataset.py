@@ -3,7 +3,7 @@ import unittest
 import numpy as np
 import torch
 
-from sinra.layered_bilstm_crf.dataset import NestedNERDataset
+from shinra.layered_bilstm_crf.dataset import NestedNERDataset
 
 
 class NestedNERDatasetTest(unittest.TestCase):
@@ -37,7 +37,6 @@ class NestedNERDatasetTest(unittest.TestCase):
         self.assertFalse(torch.equal(self.dataset.POS.vocab.vectors[i], z))
         i = self.dataset.SUBPOS.vocab.stoi['サ変接続']
         self.assertFalse(torch.equal(self.dataset.SUBPOS.vocab.vectors[i], z))
-        self.assertEqual(self.dataset.device, 'cpu')
         self.assertEqual(self.dataset.label_len, 3)
         self.assertEqual(len(self.dataset.LABELS.vocab.stoi), 6)
         self.assertTrue(

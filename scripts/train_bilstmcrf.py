@@ -5,9 +5,9 @@ import numpy as np
 import torch
 
 from load_config import config_setup_print
-from sinra.bilstm_crf.trainer import Trainer
-from sinra.bilstm_crf.model import BiLSTMCRF
-from sinra.bilstm_crf.dataset import NestedNERDataset
+from shinra.bilstm_crf.trainer import Trainer
+from shinra.bilstm_crf.model import BiLSTMCRF
+from shinra.bilstm_crf.dataset import NestedNERDataset
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)

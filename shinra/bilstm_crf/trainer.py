@@ -6,7 +6,6 @@ import torch.nn as nn
 
 from .model import BiLSTMCRF
 from .dataset import NestedNERDataset
-from .char_encoder import BiLSTMEncoder
 
 logger = getLogger(name='BiLSTMCRF')
 handler = StreamHandler()
@@ -59,7 +58,8 @@ class Trainer:
                     data.word, data.char, data.pos, data.subpos,
                     device=self.device_str
                 )
-                input_embed = self.model.module.concat_embedding(list(vecs.values()))
+                input_embed = self.model.module.concat_embedding(
+                    list(vecs.values()))
                 labels = self.dataset.get_batch_true_label(
                     data, 0, self.device_str
                 )

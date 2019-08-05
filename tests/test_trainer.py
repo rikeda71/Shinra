@@ -1,8 +1,8 @@
 import unittest
 
-from sinra.layered_bilstm_crf.trainer import Trainer
-from sinra.layered_bilstm_crf.model import NestedNERModel
-from sinra.layered_bilstm_crf.dataset import NestedNERDataset
+from shinra.layered_bilstm_crf.trainer import Trainer
+from shinra.layered_bilstm_crf.model import NestedNERModel
+from shinra.layered_bilstm_crf.dataset import NestedNERDataset
 
 
 class TrainerTest(unittest.TestCase):

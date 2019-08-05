@@ -1,6 +1,3 @@
-from typing import List
-
-import numpy as np
 import torch
 from miner import Miner
 
@@ -40,7 +37,8 @@ class Evaluator:
                     [self.dataset.wordid_to_sentence[sentence]
                      for sentence in data.word]
                 )
-                input_embed = self.model.module.concat_embedding(list(vecs.values))
+                input_embed = self.model.module.concat_embedding(
+                    list(vecs.values))
                 answer_label = self.dataset.get_batch_true_label(
                     data, 0, self.device_str
                 )

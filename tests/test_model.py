@@ -4,7 +4,7 @@ import numpy as np
 import torch
 import torch.nn as nn
 
-from sinra.layered_bilstm_crf.model import NestedNERModel
+from shinra.layered_bilstm_crf.model import NestedNERModel
 
 
 class NestedNERModelTest(unittest.TestCase):
