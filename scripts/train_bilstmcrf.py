@@ -9,8 +9,7 @@ from sinra.bilstm_crf.trainer import Trainer
 from sinra.bilstm_crf.model import BiLSTMCRF
 from sinra.bilstm_crf.dataset import NestedNERDataset
 
-logging.basicConfig(filename='NestedNER_experiment.log',
-                    level=logging.INFO)
+logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
 torch.manual_seed(100)
@@ -111,7 +110,7 @@ def train(dataset_dir: str, word_vec_path: str,
         optalgo = torch.optim.Adam
     trainer = Trainer(model=model, dataset=dataset, lr=learning_rate,
                       cg=clip_grad_num, max_epoch=epoch_size,
-                      batch_size=batch_size, char_hidden_dim=char_hidden_dim,
+                      batch_size=batch_size,
                       dropout_rate=dropout_rate, optalgo=optalgo,
                       save_path='data/result/{}.pth'.format(model_name))
     trainer.train()

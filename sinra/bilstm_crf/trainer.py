@@ -59,7 +59,7 @@ class Trainer:
                     data.word, data.char, data.pos, data.subpos,
                     device=self.device_str
                 )
-                input_embed = self.model.module.concat_embedding(vecs.items())
+                input_embed = self.model.module.concat_embedding(list(vecs.values()))
                 labels = self.dataset.get_batch_true_label(
                     data, 0, self.device_str
                 )

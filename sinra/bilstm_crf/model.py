@@ -41,7 +41,7 @@ class BiLSTMCRF(nn.Module):
             batch_first=True,
             bidirectional=True
         )
-        self.linear = nn.Linear(input_dim, num_labels)
+        self.linear = nn.Linear(rnn_hidden_size, num_labels)
         self.dropout_layer = nn.Dropout(p=dropout_rate)
         self.crf = CRF(num_labels, 0)
         self.device = torch.device(
@@ -95,7 +95,7 @@ class BiLSTMCRF(nn.Module):
             predicted_labels = self.forward(input_embed, mask, None, False)[0]
         return predicted_labels
 
-    def concat_embedding(self, *args) -> Tensor:
+    def concat_embedding(self, args) -> Tensor:
         """
 
         Args:

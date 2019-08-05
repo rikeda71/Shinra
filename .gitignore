@@ -144,3 +144,4 @@ dmypy.json
 !.gitkeep
 .vector_cache/
 *.pth
+data/*

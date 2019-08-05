@@ -90,7 +90,7 @@ class NestedNERDataset:
             self.use_char = True
             self.char_encoder = \
                 char_encoder(self.CHAR.vocab.vectors, char_emb_dim,
-                             char_hidden_dim, char_dropout_rate)
+                             char_hidden_dim, char_dropout_rate).to(self.device)
         else:
             self.use_char = False
 
