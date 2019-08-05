@@ -19,7 +19,7 @@ class Trainer:
     def __init__(self, model: BiLSTMCRF, dataset: NestedNERDataset,
                  lr: float = 1e-3, cg: float = 5.0,
                  max_epoch: int = 50, batch_size: int = 64,
-                 char_hidden_dim: int = 240, dropout_rate: float = 0.5,
+                 dropout_rate: float = 0.5,
                  optalgo: torch.optim.Optimizer = torch.optim.Adam,
                  save_path: str = 'data/result/model.pth'):
         """
@@ -35,18 +35,12 @@ class Trainer:
             save_path (str, optional): [description]. Defaults to data/result/model.pth
         """
 
-        self.device = torch.device(
-            'cuda' if torch.cuda.is_available() else 'cpu'
-        )
+        self.device_str = 'cuda' if torch.cuda.is_available() else 'cpu'
+        self.device = torch.device(self.device_str)
         self.model = model.to(self.device)
         if torch.cuda.is_available():
             self.model = nn.DataParallel(model)
         self.dataset: NestedNERDataset = dataset
-        char_embed = self.dataset.get_embedding_dim()['char']
-        self.char_encoder = BiLSTMEncoder(
-            self.dataset.CHAR.vocab.vectors,
-            char_embed, char_hidden_dim, dropout_rate
-        ).to(self.device)
         self.cg = cg
         self.epoch_size = max_epoch
         self.batch_size = batch_size
@@ -61,16 +55,14 @@ class Trainer:
                 batch_loss = 0
                 mask = data.label0 != 0
                 mask = mask.float().to(self.device)
-                word = self.dataset.WORD.vocab.vectors[data.word].to(
-                    self.device)
-                char = self.char_encoder(data.char.to(self.device))
-                pos = self.dataset.POS.vocab.vectors[data.pos].to(self.device)
-                subpos = self.dataset.SUBPOS.vocab.vectors[data.subpos].to(
-                    self.device)
-                input_embed = self.model.module.concat_embedding(
-                    word, char, pos, subpos
+                vecs = self.dataset.to_vectors(
+                    data.word, data.char, data.pos, data.subpos,
+                    device=self.device_str
                 )
-                labels = self.dataset.get_batch_true_label(data, 0)
+                input_embed = self.model.module.concat_embedding(vecs.items())
+                labels = self.dataset.get_batch_true_label(
+                    data, 0, self.device_str
+                )
                 batch_loss, _ = self.model(input_embed, mask, labels)
                 self.optimizer.zero_grad()
                 batch_loss.backward()

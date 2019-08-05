@@ -84,15 +84,13 @@ class BiLSTMCRF(nn.Module):
             predicted_labels = self.crf.viterbi_decode(out, mask)
             return (predicted_labels, )
 
-    def predict(self, input_embed: Tensor,
-                mask: Tensor, label_lens: List[List[int]]) \
+    def predict(self, input_embed: Tensor, mask: Tensor) \
             -> Tuple[bool, Tensor, Tensor, List[List[int]], Tensor]:
         """
 
         Args:
             input_embed (Tensor): [description]
             mask (Tensor): [description]
-            label_lens (List[List[int]]): [description]
 
         Returns:
             Tuple[bool, Tensor, Tensor, List[List[int]], Tensor]: [description]
@@ -102,20 +100,28 @@ class BiLSTMCRF(nn.Module):
             predicted_labels = self.forward(input_embed, mask, None, False)[0]
         return predicted_labels
 
-    def concat_embedding(self, words: Tensor, chars: Tensor = None,
-                         pos: Tensor = None, subpos: Tensor = None) -> Tensor:
+    def concat_embedding(self, *args) -> Tensor:
         """
 
         Args:
             words (Tensor): [description]
-            chars (Tensor): [description]
-            pos (Tensor): [description]
-            subpos (Tensor): [description]
+            chars (Tensor, optional): [description]
+            pos (Tensor, optional): [description]
+            subpos (Tensor, optional): [description]
 
         Returns:
             Tensor: [description]
         """
 
         # (batch_size, seq_len, embedding_dim)
-        x = torch.cat((words, chars, pos, subpos), dim=2).to(self.device)
+        x = torch.cat(args, dim=2).to(self.device)
         return x
+
+    def load(self, path: str):
+        """
+        load saved model file
+        Args:
+            path (str): [saved model file]
+        """
+
+        self.load_state_dict(torch.load(path))

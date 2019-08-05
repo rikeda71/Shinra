@@ -1,8 +1,11 @@
-from typing import Dict
+from typing import List, Dict
 import numpy as np
 import torch
+import torch.nn as nn
 import torchtext
 from torchtext.vocab import Vectors
+
+from .char_encoder import BiLSTMEncoder
 
 
 class NestedNERDataset:
@@ -12,9 +15,12 @@ class NestedNERDataset:
 
     def __init__(self, text_file_dir: str, train_txt: str = 'train.txt',
                  dev_txt: str = 'dev.txt', test_txt: str = 'test.txt',
-                 wordemb_path: str = 'embedding.txt', use_gpu: bool = True,
-                 word_min_freq: int = 3, char_emb_dim: int = 640,
-                 pos_emb_dim: int = 5):
+                 wordemb_path: str = 'embedding.txt',
+                 word_min_freq: int = 3, pos_emb_dim: int = 5,
+                 char_emb_dim: int = 640, char_hidden_dim: int = 240,
+                 char_encoder: nn.Module = BiLSTMEncoder,
+                 char_dropout_rate: float = 0.5,
+                 use_char: bool = True, use_pos: bool = True):
         """
 
         Args:
@@ -27,15 +33,25 @@ class NestedNERDataset:
              Defaults to 'test.txt'.
             wordemb_path (str, optional): path of pretrained word embeddings.
              Defaults to 'embedding.txt'.
-            use_gpu (bool, optional): if True, using GPU. Defaults to True.
             word_min_freq (int, optional): if num of occuring < word_min_freq,
              word -> <unk>. Defaults to 3.
-            char_emb_dim (int, optional): dimension of character embeddings.
-             Defaults to 50.
             pos_emb_dim (int, optional): dimension of part of speech embeddings.
              Defaults to 5.
+            char_emb_dim (int, optional): dimension of character embeddings.
+             Defaults to 640.
+            char_hidden_dim (int, optional): dimension of character encoder hidden size
+             Defaults to 240.
+            char_encoder (nn.Module, optional): char encoder class.
+             Defaults to BiLSTMEncoder
+            char_dropout_rate (float, optional): dropout rate of char encoder
+             Defaults to 0.5
+            use_char (bool, optional): if True, use char embedding. Defaults to True
+            use_pos (bool, optional): if True, use pos embedding. Defaults to True
         """
 
+        self.device = torch.device(
+            'cuda' if torch.cuda.is_available() else 'cpu'
+        )
         text_file_dir += '/' if text_file_dir[-1] != '/' else ''
 
         with open(text_file_dir + train_txt, 'r') as f:
@@ -62,7 +78,7 @@ class NestedNERDataset:
                               min_freq=word_min_freq)
 
         # set randomize vectors for char, pos, and subpos embeddings
-        if char_emb_dim > 0:
+        if use_char and char_emb_dim > 0:
             self.CHAR.build_vocab(
                 self.train.char, self.dev.char, self.test.char)
             self.CHAR.vocab.set_vectors(
@@ -71,7 +87,14 @@ class NestedNERDataset:
                     len(self.CHAR.vocab.itos), char_emb_dim),
                 dim=char_emb_dim
             )
-        if pos_emb_dim > 0:
+            self.use_char = True
+            self.char_encoder = \
+                char_encoder(self.CHAR.vocab.vectors, char_emb_dim,
+                             char_hidden_dim, char_dropout_rate)
+        else:
+            self.use_char = False
+
+        if use_pos and pos_emb_dim > 0:
             self.POS.build_vocab(
                 self.train.pos, self.dev.pos, self.test.pos)
             self.POS.vocab.set_vectors(
@@ -88,17 +111,15 @@ class NestedNERDataset:
                     len(self.SUBPOS.vocab.itos), pos_emb_dim),
                 dim=pos_emb_dim
             )
+            self.use_pos = True
+        else:
+            self.use_pos = False
 
         self.LABELS.build_vocab(self.train)
         self.LABELS.vocab.itos.sort(key=lambda x: (x[-1], x[0]))
         self.LABELS.vocab.stoi = {s: i for i, s in
                                   enumerate(self.LABELS.vocab.itos)}
         self.label_type = len(self.LABELS.vocab.itos)
-
-        if use_gpu and torch.cuda.is_available():
-            self.device = torch.device(0)
-        else:
-            self.device = torch.device('cpu')
 
     def get_batch(self, batch_size: int, dataset_name: str = 'train'):
         """
@@ -166,7 +187,7 @@ class NestedNERDataset:
         return embedding
 
     def get_batch_true_label(self, data: torchtext.data.batch,
-                             nested: int) -> torch.Tensor:
+                             nested: int, device: str = 'cpu') -> torch.Tensor:
         """
 
         Args:
@@ -187,4 +208,42 @@ class NestedNERDataset:
             labels = data.label3
         elif nested == 4:
             labels = data.label4
-        return labels.to(self.device)
+        return labels.to(torch.device('cpu'))
+
+    def to_vectors(self, word: torch.Tensor, char: torch.Tensor,
+                   pos: torch.Tensor, subpos: torch.Tensor,
+                   device: str = 'cpu'):
+        """
+
+        Args:
+            word (torch.Tensor): [description]
+            char (torch.Tensor): [description]
+            pos (torch.Tensor): [description]
+            subpos (torch.Tensor): [description]
+            device (str, optional): [description]. Defaults to 'cpu'.
+
+        Returns:
+            [type]: [description]
+        """
+
+        device = torch.device(device)
+        vector = {'word': self.WORD.vocab.vectors[word].to(device)}
+        if self.use_pos:
+            vector['char'] = self.char_encoder(char.to(self.device)).to(device)
+        if pos is not None:
+            vector['pos'] = self.POS.vocab.vectors[pos].to(device)
+        if subpos is not None:
+            vector['subpos'] = self.SUBPOS.vocab.vectors[subpos].to(device)
+        return vector
+
+    def wordid_to_sentence(self, ids: torch.Tensor) -> List[str]:
+        """
+
+        Args:
+            ids (torch.Tensor): [description]
+
+        Returns:
+            List[str]: [description]
+        """
+
+        return [self.WORD.vocab.itos[i] for i in ids]
