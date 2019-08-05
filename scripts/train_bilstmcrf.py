@@ -101,8 +101,8 @@ def train(dataset_dir: str, word_vec_path: str,
                                char_emb_dim=char_emb_dim,
                                pos_emb_dim=pos_emb_dim)
     dims = dataset.get_embedding_dim()
-    model = BiLSTMCRF(dataset.label_type, dropout_rate,
-                      dims['word'], char_hidden_dim, pos_emb_dim)
+    model = BiLSTMCRF(dataset.label_type, rnn_hidden_size,
+                      dims['word'], char_hidden_dim, pos_emb_dim, dropout_rate)
     if opt_func == 'SGD':
         optalgo = torch.optim.SGD
     elif opt_func == 'Adadelta':

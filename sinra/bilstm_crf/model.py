@@ -15,30 +15,27 @@ class BiLSTMCRF(nn.Module):
     Bidirectional LSTM CRF model
     """
 
-    def __init__(self, num_labels: int, dropout_rate: float,
-                 word_emb_dim: int, char_emb_dim: int, pos_emb_dim: int,
-                 pad_idx: int = 0, other_idx: int = 1):
+    def __init__(self, num_labels: int, rnn_hidden_size: int,
+                 word_emb_dim: int, char_emb_dim: int,
+                 pos_emb_dim: int, dropout_rate: float = 0.5):
         """
 
         Args:
             num_labels (int): [description]
-            dropout_rate (float): [description]
+            rnn_hidden_size (int): [description]
             word_emb_dim (int): [description]
             char_emb_dim (int): [description]
             pos_emb_dim (int): [description]
-            pad_idx (int, optional): [description]. Defaults to 0.
-            other_idx (int, optional): [description]. Defaults to 1.
+            dropout_rate (float, optional): [description]. Defaults to 0.5.
         """
 
         super().__init__()
         input_dim = word_emb_dim + char_emb_dim + pos_emb_dim * 2
-        self.USE_CHAR = True if char_emb_dim > 0 else False
-        self.USE_POS = True if pos_emb_dim > 0 else False
         self.num_labels = num_labels
         # bilstm output -> next bilstm input. So, hidden_size == input_size
         self.bilstm = nn.LSTM(
             input_size=input_dim,
-            hidden_size=input_dim // 2,
+            hidden_size=rnn_hidden_size // 2,
             num_layers=1,
             bias=True,
             batch_first=True,
@@ -46,9 +43,7 @@ class BiLSTMCRF(nn.Module):
         )
         self.linear = nn.Linear(input_dim, num_labels)
         self.dropout_layer = nn.Dropout(p=dropout_rate)
-        self.crf = CRF(num_labels, pad_idx)
-        self.pad_idx = pad_idx
-        self.other_idx = other_idx
+        self.crf = CRF(num_labels, 0)
         self.device = torch.device(
             'cuda' if torch.cuda.is_available() else 'cpu'
         )

@@ -74,6 +74,6 @@ class Trainer:
 
     def save(self, path: str):
         if torch.cuda.is_available():
-            torch.save(self.model.module.state_dict(), path)
+            torch.save(self.model.module.cpu().state_dict(), path)
         else:
             torch.save(self.model.state_dict(), path)
