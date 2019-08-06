@@ -39,13 +39,14 @@ np.random.seed(seed=100)
 @click.option('-ce', '--char_emb_dim', type=int, default=640)
 @click.option('-cl', '--char_hidden_dim', type=int, default=240)
 @click.option('-n', '--model_name', type=str, default='nested-ner')
+@click.option('-sm', '--saved_model', type=str, default=None)
 def train(dataset_dir: str, word_vec_path: str,
           epoch_size: int, batch_size: int,
           rnn_hidden_size: int, es_patience: int,
           dropout_rate: float, clip_grad_num, learning_rate: float,
           pos_emb_dim: int, opt_func: str, rnn_type: str,
           char_emb: str, char_emb_dim: int, char_hidden_dim: int,
-          model_name: str
+          model_name: str, saved_model: str
           ):
     """
 
@@ -66,6 +67,7 @@ def train(dataset_dir: str, word_vec_path: str,
         char_emb_dim (int): [description]
         char_hidden_dim (int): [description]
         model_name (str): [description]
+        saved_model: (str): [description]
     """
 
     dataset_dir += '/' if dataset_dir[-1] != '/' else ''
@@ -85,13 +87,14 @@ def train(dataset_dir: str, word_vec_path: str,
                 char_emb: {}\n\
                 char_emb_dim: {}\n\
                 char_hidden_dim: {}\n\
-                model_name: {}'.format(dataset_dir, word_vec_path,
+                model_name: {}\n\
+                saved_model: {}'.format(dataset_dir, word_vec_path,
                                        epoch_size, batch_size,
                                        rnn_hidden_size, es_patience,
                                        dropout_rate, clip_grad_num, learning_rate,
                                        pos_emb_dim, opt_func, rnn_type,
                                        char_emb, char_emb_dim, char_hidden_dim,
-                                       model_name)
+                                       model_name, saved_model)
                 )
     logger.info('start experiment')
 
@@ -102,6 +105,9 @@ def train(dataset_dir: str, word_vec_path: str,
     dims = dataset.get_embedding_dim()
     model = BiLSTMCRF(dataset.label_type, rnn_hidden_size,
                       dims['word'], char_hidden_dim, pos_emb_dim, dropout_rate)
+    if saved_model is not None:
+        logger.info('load saved model')
+        model.load_state_dict(torch.load(saved_model))
     if opt_func == 'SGD':
         optalgo = torch.optim.SGD
     elif opt_func == 'Adadelta':
@@ -113,6 +119,7 @@ def train(dataset_dir: str, word_vec_path: str,
                       batch_size=batch_size,
                       dropout_rate=dropout_rate, optalgo=optalgo,
                       save_path='data/result/{}.pth'.format(model_name))
+    logger.info('training!')
     trainer.train()
 
 
