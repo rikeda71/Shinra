@@ -1,4 +1,5 @@
 from logging import getLogger, StreamHandler, INFO
+from collections import OrderedDict
 
 from tqdm import tqdm
 import torch
@@ -47,29 +48,30 @@ class Trainer:
         self.save_path = save_path
 
     def train(self):
-        for i in tqdm(range(self.epoch_size)):
-            all_loss = 0.0
-            iterator = self.dataset.get_batch(self.batch_size)
-            for j, data in enumerate(iterator):
-                batch_loss = 0
-                mask = data.label0 != 0
-                mask = mask.float().to(self.device)
-                vecs = self.dataset.to_vectors(
-                    data.word, data.char, data.pos, data.subpos,
-                    device=self.device_str
-                )
-                input_embed = self.model.module.concat_embedding(
-                    list(vecs.values()))
-                labels = self.dataset.get_batch_true_label(
-                    data, 0, self.device_str
-                )
-                batch_loss, _ = self.model(input_embed, mask, labels)
-                self.optimizer.zero_grad()
-                batch_loss.backward()
-                nn.utils.clip_grad_norm_(self.model.parameters(), self.cg)
-                self.optimizer.step()
-                all_loss += batch_loss
-            logger.info('epoch: {} loss: {}'.format(i + 1, all_loss))
+        with tqdm(range(self.epoch_size), ncols=20) as progress:
+            for i in progress:
+                all_loss = 0.0
+                iterator = self.dataset.get_batch(self.batch_size)
+                for j, data in enumerate(iterator):
+                    batch_loss = 0
+                    mask = data.label0 != 0
+                    mask = mask.float().to(self.device)
+                    vecs = self.dataset.to_vectors(
+                        data.word, data.char, data.pos, data.subpos,
+                        device=self.device_str
+                    )
+                    input_embed = self.model.module.concat_embedding(
+                        list(vecs.values()))
+                    labels = self.dataset.get_batch_true_label(
+                        data, 0, self.device_str
+                    )
+                    batch_loss, _ = self.model(input_embed, mask, labels)
+                    self.optimizer.zero_grad()
+                    batch_loss.backward()
+                    nn.utils.clip_grad_norm_(self.model.parameters(), self.cg)
+                    self.optimizer.step()
+                    all_loss += batch_loss
+                progress.set_postfix(OrderedDict(epoch=i+1, loss=all_loss.item()))
         self.save(self.save_path)
 
     def save(self, path: str):

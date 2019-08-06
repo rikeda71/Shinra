@@ -52,6 +52,7 @@ class NestedNERDataset:
         self.device = torch.device(
             'cuda' if torch.cuda.is_available() else 'cpu'
         )
+        self.char_dim = char_hidden_dim
         text_file_dir += '/' if text_file_dir[-1] != '/' else ''
 
         with open(text_file_dir + train_txt, 'r') as f:
@@ -155,10 +156,9 @@ class NestedNERDataset:
         """
 
         word_dim = self.WORD.vocab.vectors.shape[1]
-        char_dim = self.CHAR.vocab.vectors.shape[1]
         pos_dim = self.POS.vocab.vectors.shape[1]
         subpos_dim = self.SUBPOS.vocab.vectors.shape[1]
-        return {'word': word_dim, 'char': char_dim,
+        return {'word': word_dim, 'char': self.char_dim,
                 'pos': pos_dim, 'subpos': subpos_dim}
 
     @staticmethod
@@ -247,3 +247,7 @@ class NestedNERDataset:
         """
 
         return [self.WORD.vocab.itos[i] for i in ids]
+
+    def labelid_to_labels(self, ids: List[int]) -> List[str]:
+
+        return [self.LABELS.vocab.itos[i] for i in ids]

@@ -1,3 +1,4 @@
+from tqdm import tqdm
 import torch
 from miner import Miner
 
@@ -13,8 +14,8 @@ class Evaluator:
         self.device = torch.device(
             self.device_str
         )
-        model.load(model_path)
-        self.model: BiLSTMCRF = model.to(self.device)
+        model.load_state_dict(torch.load(model_path))
+        self.model = model.to(self.device)
         self.dataset = dataset
 
     def evaluate(self, batch_size: int = 64):
@@ -26,7 +27,7 @@ class Evaluator:
         self.model.eval()
         self.dataset.char_encoder.eval()
         with torch.no_grad():
-            for data in test_iterator:
+            for data in tqdm(test_iterator):
                 mask = data.label0 != 0
                 mask = mask.float().to(self.device)
                 vecs = self.dataset.to_vectors(
@@ -34,20 +35,24 @@ class Evaluator:
                     device=self.device_str
                 )
                 sentences.extend(
-                    [self.dataset.wordid_to_sentence[sentence]
+                    [self.dataset.wordid_to_sentence(sentence)
                      for sentence in data.word]
                 )
-                input_embed = self.model.module.concat_embedding(
-                    list(vecs.values))
+                input_embed = self.model.concat_embedding(list(vecs.values()))
+                predicted_labels.extend(self.model.predict(input_embed, mask))
                 answer_label = self.dataset.get_batch_true_label(
                     data, 0, self.device_str
                 )
                 answer_label = answer_label.numpy()
-                mask = mask.cpu.numpy()
-                answer_label = answer_label[mask > 0]
-                answer_labels.extend(answer_label.tolist())
-                predicted_labels.extend(self.model.predict(input_embed, mask))
-        self.mienr = Miner(answer_labels, predicted_labels, sentences)
-        self.miner.default_report()
+                mask = mask.cpu().numpy() > 0
+                answer_label = [answer_label[i, mask[i]].tolist()
+                                for i in range(len(answer_label))]
+                answer_labels.extend(answer_label)
+        answer_labels = [self.dataset.labelid_to_labels(answer)
+                         for answer in answer_labels]
+        predicted_labels = [self.dataset.labelid_to_labels(pred)
+                            for pred in predicted_labels]
+        self.miner = Miner(answer_labels, predicted_labels, sentences)
+        self.miner.default_report(True)
         self.model.train()
         self.dataset.char_encoder.train()
