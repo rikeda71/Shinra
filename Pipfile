@@ -23,6 +23,7 @@ mlflow = "*"
 torchtext = "*"
 torchcrf = "==1.0.4"
 torch = "*"
+python-dotenv = "*"
 
 [requires]
 python_version = "3.7"

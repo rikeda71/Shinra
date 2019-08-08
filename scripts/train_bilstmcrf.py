@@ -1,14 +1,19 @@
 import click
 import logging
+import os
 
 import numpy as np
 import torch
+from dotenv import load_dotenv
+import slackweb
 
 from load_config import config_setup_print
 from shinra.bilstm_crf.trainer import Trainer
 from shinra.bilstm_crf.model import BiLSTMCRF
 from shinra.bilstm_crf.dataset import NestedNERDataset
 
+
+load_dotenv('.env')
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
@@ -89,12 +94,12 @@ def train(dataset_dir: str, word_vec_path: str,
                 char_hidden_dim: {}\n\
                 model_name: {}\n\
                 saved_model: {}'.format(dataset_dir, word_vec_path,
-                                       epoch_size, batch_size,
-                                       rnn_hidden_size, es_patience,
-                                       dropout_rate, clip_grad_num, learning_rate,
-                                       pos_emb_dim, opt_func, rnn_type,
-                                       char_emb, char_emb_dim, char_hidden_dim,
-                                       model_name, saved_model)
+                                        epoch_size, batch_size,
+                                        rnn_hidden_size, es_patience,
+                                        dropout_rate, clip_grad_num, learning_rate,
+                                        pos_emb_dim, opt_func, rnn_type,
+                                        char_emb, char_emb_dim, char_hidden_dim,
+                                        model_name, saved_model)
                 )
     logger.info('start experiment')
 
@@ -121,6 +126,8 @@ def train(dataset_dir: str, word_vec_path: str,
                       save_path='data/result/{}.pth'.format(model_name))
     logger.info('training!')
     trainer.train()
+    slack = slackweb.Slack(url=os.environ.get('SLACK_NOTIFY_URL'))
+    slack.notify(text='Shinra: BiLSTM-CRFによる学習が終了しました')
 
 
 if __name__ == '__main__':
