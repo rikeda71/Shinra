@@ -24,6 +24,9 @@ torchtext = "*"
 torchcrf = "==1.0.4"
 torch = "*"
 python-dotenv = "*"
+slackweb = "*"
+mi-ner = "*"
+sklearn-crfsuite = "*"
 
 [requires]
 python_version = "3.7"
