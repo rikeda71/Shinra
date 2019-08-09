@@ -249,7 +249,8 @@ class Dataset:
             '座標・緯度': 'LATITUDE',
             '座標・経度': 'LONGITUDE',
             '成立年': 'YESTABLISH',  # year of establishment
-            '地名の謂れ': 'REASON'
+            '地名の謂れ': 'REASON',
+            '読み': 'READING'
         }
 
         self._conv_label_pair['Company'] = {
