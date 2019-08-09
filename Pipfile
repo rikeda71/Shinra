@@ -9,6 +9,7 @@ autopep8 = "*"
 mypy = "*"
 jupyterlab = "*"
 matplotlib = "*"
+python-language-server = "*"
 
 [packages]
 bs4 = "*"

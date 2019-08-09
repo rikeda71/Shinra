@@ -44,7 +44,7 @@ scikit-learnが日本語名クラス（正確にはダブルバイト文字）�
  '地形': 'TERRAIN',
  '特産品': 'SPROD',  # special product
  '国': 'COUNTRY',
- '合併市区町村': 'MTOWN'  # merger towns,
+ '合併市区町村': 'MTOWN',  # merger towns,
  '温泉・鉱泉': 'SPRING',
  '旧称': 'OLDNAME',
  '友好市区町村': 'FTOWN', # friendly towns,
