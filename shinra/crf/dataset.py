@@ -104,10 +104,8 @@ class Dataset:
             logging.error('Please select "mode" from train, test or develop')
             exit()
 
-        sentences = []
-        for morphs in target:
-            sentences.append([self._japlabel_to_englabel(morph[-self._label_num])
-                              for morph in morphs])
+        sentences = [[self._japlabel_to_englabel(morph[-self._label_num])
+                      for morph in morphs] for morphs in target]
         return sentences
 
     def _japlabel_to_englabel(self, label: str) -> str:
