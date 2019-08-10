@@ -6,6 +6,7 @@ import re
 import numpy as np
 import pandas as pd
 from dotenv import load_dotenv
+import pickle
 import slackweb
 
 from load_config import config_setup_print
@@ -72,6 +73,7 @@ def train(dataset_dir: str, word_length: bool,
         df.to_csv('data/03_result/{0}_{1}.csv'.format(model_name, target))
     slack = slackweb.Slack(url=os.environ.get('SLACK_NOTIFY_URL'))
     slack.notify(text='実験が終了しました')
+    pickle.dump(model, open('data/result/{}.pickle'.format(model_name), 'wb'))
 
 
 if __name__ == '__main__':
