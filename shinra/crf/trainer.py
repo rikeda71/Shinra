@@ -18,8 +18,6 @@ class Trainer:
         self._model = model
         self._dataset = dataset
         self._param_tune = param_tune
-        self.train_data: list = []
-        self.test_data: list = []
 
     def train(self):
         """
@@ -29,9 +27,9 @@ class Trainer:
 
         data = self._dataset.load()
         self.train_data = data['train']
-        self.dev_data = data['test'] if 'test' in data.keys() else None
+        self.dev_data = data['develop']
         self.test_data = data['test']
-        if self.dev_data is not None and self._param_tune:
+        if self._param_tune:
             self._model.hyper_param_tune(
                 self.train_data[0],
                 self.train_data[1],

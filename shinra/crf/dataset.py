@@ -16,7 +16,8 @@ class Dataset:
                  target_class: str,
                  is_inbracket: bool = False,
                  word_length: bool = False,
-                 contain_last_char: bool = False):
+                 contain_last_char: bool = False,
+                 ws: int = 2):
         """
         get experiment data from processed dataset
         :param path: dataset path
@@ -24,18 +25,20 @@ class Dataset:
         :param is_inbracket: if True, add inbracket feature
         :param word_length: if True, add word length feature
         :param contain_last_char: if True, add a last character in a word
+        :param ws: window size
         """
 
         self._p = path
         self._target_class = target_class
         self._is_inbracket = is_inbracket
-        self._word_length = word_length
-        self._last_char = contain_last_char
         self._train = self._preprocess_dataset('train')
         self._test = self._preprocess_dataset('test')
         self._dev = self._preprocess_dataset('dev')
         self._detect_label_num()
         self._prepare_conv_label_pair()
+        self.t = Transformer(ws, self._is_inbracket,
+                             word_length, contain_last_char,
+                             self._label_num)
 
     def load(self)\
             -> Dict[str, Tuple[List[List[Dict[str, str]]], List[List[str]]]]:
@@ -159,26 +162,22 @@ class Dataset:
                  if morph != ''])
         return preprocessed
 
-    def _get_features(self, mode: str, ws: int = 2)\
+    def _get_features(self, mode: str)\
             -> List[List[Dict[str, str]]]:
         """
         sentences -> features list
         :param mode: train or test or develop
-        :param ws: window size
         :return:
         """
 
-        t = Transformer(ws, self._is_inbracket,
-                        self._word_length, self._last_char,
-                        self._label_num)
         if mode == 'train':
-            return [t.sentence2features(morphs)
+            return [self.t.sentence2features(morphs)
                     for morphs in self._train]
         elif mode == 'test':
-            return [t.sentence2features(morphs)
+            return [self.t.sentence2features(morphs)
                     for morphs in self._test]
         elif mode == 'develop':
-            return [t.sentence2features(morphs)
+            return [self.t.sentence2features(morphs)
                     for morphs in self._dev]
         else:
             logging.error('Please select "mode" from train, test or develop')

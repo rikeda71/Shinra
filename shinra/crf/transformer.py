@@ -38,25 +38,16 @@ class Transformer:
             features = {}
             near_morphs = self._get_near_morphs(morphs, k)
             # store is in bracket feature
-            if self._is_inbracket:
-                features.update(
-                    {'inBracket': self._isInBracket(word_list, k)})
+            # if self._is_inbracket:
+            #     features.update(
+            #         {'inBracket': self._isInBracket(word_list, k)})
             features.update(
                 {'{0}:word'.format(-self._ws + i): morph[0]
                     for i, morph in enumerate(near_morphs)})
-            if self._last_char:
-                features.update(
-                    {'{0}:lastword'.format(-self._ws + i): morph[0][-1]
-                        for i, morph in enumerate(near_morphs)
-                        if morph[0] not in ['BOS', 'EOS']})
             features.update(
                 {'{0}:word_type'.format(-self._ws + i):
                     self._get_char_types(morph[0])
                     for i, morph in enumerate(near_morphs)})
-            if self._word_length:
-                features.update(
-                    {'{0}:word_length'.format(-self._ws + i): len(morph[0])
-                        for i, morph in enumerate(near_morphs)})
             # store part of speech
             features.update(
                 {'{0}:pos'.format(-self._ws + i): morph[-2]
@@ -66,7 +57,19 @@ class Transformer:
                 {'{0}:subpos'.format(-self._ws + i): morph[-1]
                  for i, morph in enumerate(near_morphs)}
             )
+            if self._last_char:
+                features.update(
+                    {'{0}:lastword'.format(-self._ws + i): morph[0][-1]
+                        for i, morph in enumerate(near_morphs)
+                        if morph[0] not in ['BOS', 'EOS']})
+            if self._word_length:
+                features.update(
+                    {'{0}:word_length'.format(-self._ws + i): len(morph[0])
+                        for i, morph in enumerate(near_morphs)})
             sentence_features.append(features)
+        del features
+        del near_morphs
+        del word_list
         return sentence_features
 
     def _get_near_morphs(self, morphs: List[List[str]], i: int)\
