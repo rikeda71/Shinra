@@ -14,9 +14,7 @@ app.config['JSON_AS_ASCII'] = False
 
 load_dotenv('/home/.env')
 
-with open(sudachipy.config.SETTINGFILE, 'r') as f:
-    settings = json.load(f)
-sudachi_tokenizer = dictionary.Dictionary(settings).create()
+sudachi_tokenizer = dictionary.Dictionary().create()
 SPLIT_MODE = tokenizer.Tokenizer.SplitMode
 
 

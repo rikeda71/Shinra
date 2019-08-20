@@ -5,6 +5,7 @@ import logging
 import re
 import random
 import os
+import unicodedata
 from logging import getLogger, StreamHandler
 
 import click
@@ -24,7 +25,7 @@ HEADERS = {'Content-Type': 'application/json'}
 random.seed(0)
 
 
-def return_ne_label(now_index: int, places: Dict[str, int],
+def return_ne_label(now_index: int, places: Dict[str, Any],
                     word_len: int, bioul: bool) -> Tuple[str, bool]:
     """
     decide head label and ne_label
@@ -91,6 +92,7 @@ def get_annotated_label_info(sentence: str) -> List[Tuple[str, int, int]]:
     :rtype: List[Tuple[str, int, int]]
     """
 
+    sentence = sentence.replace(' ', '')  # remove white spaces
     only_insert_mark = re.sub(r'\[/l-.+?\]', '', sentence)
     only_close_mark = re.sub(r'\[l-.+?\]', '', sentence)
     insert_idx = get_mark_indexes_and_label(
@@ -183,27 +185,35 @@ def annotation(sentences: List[str], algo: str,
     :rtype: List[str]
     """
 
+    tab_num = 1
+    tab_counts = []
     annotated_sentences = []
     logger.info('morph analysing ...')
     for sentence in tqdm(sentences):
-        sentence = sentence.replace(' ', '')
+        sentence = re.sub(r'\s{2,}', '',
+                          unicodedata.normalize('NFKC', sentence)).strip()
+        if sentence == '':
+            continue
         stack_places = get_annotated_label_info(sentence)
         sentence = re.sub(r'\[/*l-.+?\]', '', sentence)
         if char_level:
-            morphs = [c for c in sentence]
+            morphs = [c for c in sentence.replace(' ', '')]
             words = deepcopy(morphs)
         else:
             words, info = request_morph_analysis_api(sentence, algo, mode)
-            morphs = [w + '\t' + i for w, i in zip(words, info)]
+            morphs = [w + '\t' + i for w,
+                      i in zip(words, info) if w != ['', ' ']]
 
         if len(stack_places) == 0:
-            annotated_sentence = '\n'.join(
-                [morph + '\t' + label for morph,
-                 label in zip(morphs, ['O'] * len(morphs))]
-            )
+            annotated_sentence = [morph + '\t' + label for morph,
+                                  label in zip(morphs, ['O'] * len(morphs))]
+            if len(annotated_sentence) == 0:
+                continue
+            tab_counts.append(1)
             annotated_sentences.append(annotated_sentence)
             continue
 
+        tab_cnt = 0
         while len(stack_places) > 0:
             places, stack_places = get_current_labeling_pos(
                 stack_places, sentence
@@ -221,8 +231,18 @@ def annotation(sentences: List[str], algo: str,
                 cnt += 1 if flag else 0
             for k, label in enumerate(annotation_labels):
                 morphs[k] += '\t' + label
-        annotated_sentences.append('\n'.join(morphs))
-    return annotated_sentences
+            tab_cnt += 1
+            tab_num = tab_cnt if tab_cnt > tab_num else tab_num
+        tab_counts.append(tab_cnt)
+        annotated_sentences.append(morphs)
+
+    # adjust the number of annotation
+    for i, ansentence in enumerate(annotated_sentences):
+        for j, morph in enumerate(ansentence):
+            annotated_sentences[i][j] += ''.join(
+                ['\tO'] * (tab_num - tab_counts[i])
+            )
+    return ['\n'.join(morphs) for morphs in annotated_sentences]
 
 
 @click.command()
@@ -294,12 +314,12 @@ def main(corpus_path: str, out_dir: str, ksplit_num: int, bioul: bool,
                 base_name = '_{}_{}_char.txt'.format(morph_analysis, num)
             else:
                 base_name = '_{}_{}.txt'.format(morph_analysis, num)
-            with open('{}train{}'.format(dirname, base_name), 'w') as f, \
-                    open('{}test{}'.format(dirname, base_name), 'w') as f, \
-                    open('{}dev{}'.format(dirname, base_name), 'w') as f:
-                f.write('\n\n'.join(train))
-                f.write('\n\n'.join(test))
-                f.write('\n\n'.join(dev))
+            with open('{}train{}'.format(dirname, base_name), 'w') as trf, \
+                    open('{}test{}'.format(dirname, base_name), 'w') as tef, \
+                    open('{}dev{}'.format(dirname, base_name), 'w') as df:
+                trf.write('\n\n'.join(train))
+                tef.write('\n\n'.join(test))
+                df.write('\n\n'.join(dev))
             num += 1
     else:
         with open(fname, 'w') as f:
