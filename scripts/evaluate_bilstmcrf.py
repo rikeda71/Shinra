@@ -4,7 +4,7 @@ from shinra.bilstm_crf.model import BiLSTMCRF
 from shinra.bilstm_crf.evaluator import Evaluator
 
 dataset = NestedNERDataset(text_file_dir='data/JP5/dataset/City/',
-                           wordemb_path='data/embeddings/word_vectors.txt')
+                           wordemb_path='data/embeddings/vectors')
 dims = dataset.get_embedding_dim()
 input_size = dims['word'] + dims['char'] + dims['pos'] * 2
 model = BiLSTMCRF(dataset.label_type, 128,
